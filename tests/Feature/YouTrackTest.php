@@ -1,12 +1,11 @@
 <?php
 
-use App\Models\User;
 use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
-    $this->actingAs(User::factory()->create());
+    $this->actingAs(yt_user());
     config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok', 'services.youtrack.title_prefix' => 'IssueTesteFabio']);
     Cache::flush();
 });
@@ -44,15 +43,22 @@ it('creates an issue with the title prefix, mapped custom fields and the server-
     });
 });
 
-it('does not duplicate the prefix and reports YouTrack failures without leaking the token', function () {
+it('does not duplicate the prefix', function () {
     expect(app(YouTrackClient::class)->withPrefix('IssueTesteFabio - x'))->toBe('IssueTesteFabio - x');
+});
 
+it('asks the user to log in again when YouTrack rejects their token, without leaking it', function () {
     Http::fake(['yt.test/*' => Http::response(['error' => 'Unauthorized'], 401)]);
-    $this->getJson('/api/youtrack/projects')->assertStatus(502)->assertJsonMissing(['tok']);
+    $this->getJson('/api/youtrack/projects')->assertStatus(401)->assertJsonPath('reauth', true)->assertJsonMissing(['tok']);
+});
+
+it('reports other YouTrack failures as a gateway error', function () {
+    Http::fake(['yt.test/*' => Http::response(['error' => 'boom'], 500)]);
+    $this->getJson('/api/youtrack/projects')->assertStatus(502)->assertJsonPath('reauth', false);
 });
 
 it('refuses tracker calls when YouTrack is not configured', function () {
-    config(['services.youtrack.token' => null]);
+    config(['services.youtrack.token' => null, 'services.youtrack.client_id' => null]);
     $this->getJson('/api/youtrack/projects')->assertStatus(503);
 });
 

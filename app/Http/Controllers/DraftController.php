@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Models\IssueDraft;
+use App\Services\AttachmentUploader;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
 use Illuminate\Http\Request;
@@ -40,7 +41,7 @@ class DraftController extends Controller
             try {
                 $meta = $yt->meta($project);
             } catch (TrackerException $e) {
-                return response()->json(['message' => $e->getMessage()], 502);
+                return $e->response();
             }
             foreach (self::LISTS as $field => $key) {
                 $value = array_key_exists($field, $data) ? $data[$field] : $draft->{$field};
@@ -82,7 +83,7 @@ class DraftController extends Controller
     }
 
     /** Explicit, user-confirmed creation in YouTrack (or update of the issue created from this draft). */
-    public function create(Request $request, int $conversation, YouTrackClient $yt)
+    public function create(Request $request, int $conversation, YouTrackClient $yt, AttachmentUploader $uploader)
     {
         $draft = $this->draft($request, $conversation);
         $request->validate(['confirmed' => ['accepted'], 'direct' => ['sometimes', 'boolean']]);
@@ -108,7 +109,7 @@ class DraftController extends Controller
         } catch (TrackerException $e) {
             $draft->update(['status' => 'error', 'error_message' => $e->getMessage()]);
 
-            return response()->json(['message' => $e->getMessage(), 'draft' => Presenter::draft($draft->fresh())], 502);
+            return $e->response(['draft' => Presenter::draft($draft->fresh())]);
         }
 
         $draft->update([
@@ -117,11 +118,14 @@ class DraftController extends Controller
         ]);
 
         $conv = $draft->conversation;
+        $files = $uploader->upload($yt, $result['id'], $conv->attachments()->where('to_issue', true)->whereNull('youtrack_issue')->orderBy('id')->get());
         $message = $conv->messages()->create([
             'role' => 'assistant', 'kind' => 'creation-result', 'body' => null,
             'meta' => [
                 'key' => $result['id'], 'url' => $result['url'], 'demo' => false, 'updated' => $isUpdate, 'summary' => $result['summary'],
                 'direct' => $request->boolean('direct'),
+                'attachments' => $files['sent'],
+                'attachments_failed' => $files['failed'],
                 // read-only snapshot of what was sent to YouTrack
                 'preview' => $draft->only(['project', 'type', 'priority', 'assignee', 'subsystem', 'sprint', 'labels', 'custom_fields', 'description']),
             ],

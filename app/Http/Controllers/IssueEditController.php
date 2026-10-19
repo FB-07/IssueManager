@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
+use App\Services\AttachmentUploader;
 use App\Services\DraftPatch;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
@@ -15,7 +16,7 @@ class IssueEditController extends Controller
 {
     use ScopesToUser;
 
-    public function __invoke(Request $request, int $conversation, YouTrackClient $yt)
+    public function __invoke(Request $request, int $conversation, YouTrackClient $yt, AttachmentUploader $uploader)
     {
         $c = $this->conversation($request, $conversation);
 
@@ -38,17 +39,21 @@ class IssueEditController extends Controller
         $key = $data['issue_id'];
         try {
             $patch = DraftPatch::sanitize($data, Str::beforeLast($key, '-'), $yt, withState: true);
-            if (! $patch) {
+            // images/files sent together with the request ("anexa esta imagem ao issue") go to the issue
+            $pending = $c->messages()->where('role', 'user')->latest('id')->first()?->attachments()->where('to_issue', true)->whereNull('youtrack_issue')->get() ?? collect();
+            if (! $patch && $pending->isEmpty()) {
                 return response()->json(['message' => __('ui.errors.nothing_to_change')], 422);
             }
-            $issue = $yt->update($key, $patch);
+            $issue = $patch ? $yt->update($key, $patch) : $yt->getIssue($key);
         } catch (TrackerException $e) {
-            return response()->json(['message' => $e->getMessage()], $e->status === 404 ? 404 : 502);
+            return $e->response();
         }
+
+        $files = $uploader->upload($yt, $key, $pending);
 
         // keep the editable draft in sync when the edited issue is the one created from this conversation
         $draft = $c->draft;
-        if ($draft && $draft->issue_key === $key) {
+        if ($patch && $draft && $draft->issue_key === $key) {
             $cf = $patch['custom_fields'] ?? null;
             $draft->fill(array_intersect_key($patch, array_flip(['description', 'type', 'priority', 'assignee', 'subsystem'])) + ['summary' => $issue['summary']]);
             if ($cf) {
@@ -67,7 +72,9 @@ class IssueEditController extends Controller
             'meta' => [
                 'key' => $issue['id'], 'url' => $issue['url'], 'demo' => false, 'updated' => true, 'direct' => true,
                 'summary' => $issue['summary'],
-                'changes' => array_keys($patch),
+                'changes' => array_keys($patch ?? []),
+                'attachments' => $files['sent'],
+                'attachments_failed' => $files['failed'],
                 'preview' => ['project' => $issue['project'], 'type' => $issue['type'], 'priority' => $issue['priority'],
                     'assignee' => $issue['assignee'], 'state' => $issue['state'], 'description' => $issue['description']],
             ],

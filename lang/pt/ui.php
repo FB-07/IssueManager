@@ -4,6 +4,7 @@ return [
     'app' => ['live_badge' => 'YouTrack ligado', 'name' => 'IssueManager', 'demo_badge' => 'YouTrack simulado'],
 
     'login' => [
+        'no_youtrack' => 'A tua conta entrou no Hub mas não tem acesso ao YouTrack. Pede ao administrador para dar à Service IssueManager o scope "YouTrack".',
         'title' => 'Entrar',
         'subtitle' => 'Inicia sessão com a tua conta YouTrack para aceder às tuas conversas e criar Issues.',
         'button' => 'Entrar com YouTrack',
@@ -45,7 +46,10 @@ return [
         ],
     ],
 
+    'dropdown' => ['search' => 'Pesquisar…', 'none' => 'Sem resultados'],
+
     'composer' => [
+        'voice_start' => 'Ditar por voz', 'voice_stop' => 'Parar de ouvir', 'voice_listening' => 'A ouvir… diz o teu pedido',
         'draft_toggle' => 'Rascunho de Issue',
         'draft_toggle_on' => 'Rascunho de Issue ligado: o Claude prepara um Issue quando houver informação suficiente.',
         'draft_toggle_off' => 'Rascunho de Issue desligado: conversa normal com o Claude.',
@@ -79,6 +83,8 @@ return [
     ],
 
     'card' => [
+        'section_properties' => 'Propriedades', 'required_progress' => ':done de :total obrigatórios',
+        'attachments_title' => 'Anexos para o Issue', 'attachments_count' => ':n por enviar', 'attachments_hint' => 'Os anexos marcados ficam no Issue do YouTrack quando o criares ou guardares.', 'attachment_sent' => 'Enviado para :key',
         'title' => 'Rascunho de Issue',
         'revision' => 'rev. :n',
         'status' => ['draft' => 'Rascunho', 'error' => 'Erro'],
@@ -99,8 +105,6 @@ return [
         'none' => 'Nenhum',
         'add_label' => 'Adicionar etiqueta…',
         'no_summary' => 'Sem título',
-        'ask_placeholder' => 'Pedir uma alteração ao rascunho…',
-        'ask' => 'Pedir alteração',
         'complete_to_create' => 'Preenche os campos obrigatórios para poderes criar o Issue.',
         'confirm_needed' => 'Vais poder rever e confirmar antes de criar.',
         'create' => 'Criar Issue no YouTrack',
@@ -122,6 +126,7 @@ return [
     ],
 
     'result' => [
+        'attachments' => 'Anexos enviados', 'attachments_failed' => 'Não foi possível anexar: :names',
         'changes' => 'Alterado',
         'preview' => 'Pré-visualização',
         'created_live' => 'Issue criado no YouTrack', 'updated_live' => 'Issue atualizado no YouTrack',
@@ -133,8 +138,6 @@ return [
         'link_demo' => 'Link demonstrativo — não funcional',
         'summary' => 'Resumo',
         'demo_note' => 'Este identificador é fictício. Nenhum Issue real foi criado no YouTrack.',
-        'new_chat' => 'Nova conversa',
-        'continue' => 'Continuar esta conversa',
     ],
 
     'issues' => [
@@ -166,6 +169,7 @@ return [
     ],
 
     'errors' => [
+        'voice_unsupported' => 'Este browser não suporta ditado por voz. Usa o Chrome, o Edge ou o Safari.', 'voice_denied' => 'O browser não tem permissão para usar o microfone. Autoriza-o nas definições do site.', 'voice_no_mic' => 'Não foi encontrado nenhum microfone.', 'voice_failed' => 'Não foi possível usar o ditado por voz. Tenta novamente.',
         'nothing_to_change' => 'Não encontrei nada válido para alterar no Issue.',
         'unknown_project' => 'Projeto desconhecido: :project',
         'tracker_unreachable' => 'Não foi possível contactar o YouTrack.',

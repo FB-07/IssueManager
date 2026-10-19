@@ -5,6 +5,7 @@ use App\Models\User;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 
@@ -14,8 +15,8 @@ function call_as(User $user, string $method, string $uri, array $data = [], arra
 }
 
 beforeEach(function () {
-    $this->a = User::factory()->create();
-    $this->b = User::factory()->create();
+    $this->a = yt_user();
+    $this->b = yt_user();
     config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
     Cache::flush();
     Storage::fake('local');
@@ -227,4 +228,63 @@ it('does not add the prefix when editing an issue the app did not create, and re
     call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7', 'priority' => 'INVENTED'])->assertStatus(422);
     call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => '../../etc'])->assertStatus(422);
     call_as($this->b, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7', 'summary' => 'x'])->assertNotFound();
+});
+
+function fake_yt_for_create(array $extra = []): void
+{
+    Http::swap(new Factory);
+    Http::fake($extra + [
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            ['field' => ['name' => 'Type', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Anomaly']]], '$type' => 'EnumProjectCustomField'],
+            ['field' => ['name' => 'Priority', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Major']]], '$type' => 'EnumProjectCustomField'],
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([]),
+        'yt.test/api/agiles*' => Http::response([]),
+        'yt.test/api/issues/DEV-8/attachments*' => Http::response([['id' => '1-1', 'name' => 'ok']]),
+        'yt.test/api/issues?*' => Http::response(['id' => '2-8', 'idReadable' => 'DEV-8']),
+    ]);
+}
+
+it('uploads the selected conversation images to the new issue and marks them as sent', function () {
+    fake_yt_for_create();
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    $res = turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Botão', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major']], 'vê', [
+        UploadedFile::fake()->image('erro.png', 20, 20), UploadedFile::fake()->image('ignorar.png', 20, 20),
+    ])->assertOk();
+    [$keep, $skip] = [$res->json('messages.0.attachments.0'), $res->json('messages.0.attachments.1')];
+    expect($keep['to_issue'])->toBeTrue()->and($keep['uploaded_to'])->toBeNull();
+
+    call_as($this->a, 'PATCH', "/api/attachments/{$skip['id']}", ['to_issue' => false])->assertOk()->assertJsonPath('to_issue', false);
+    call_as($this->b, 'PATCH', "/api/attachments/{$skip['id']}", ['to_issue' => true])->assertNotFound();
+
+    $created = call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertOk()
+        ->assertJsonPath('message.meta.attachments', ['erro.png'])->assertJsonPath('message.meta.attachments_failed', []);
+
+    Http::assertSent(fn ($r) => str_contains($r->url(), '/api/issues/DEV-8/attachments') && $r->hasHeader('Authorization', 'Bearer tok') && str_contains($r->body(), 'erro.png') && ! str_contains($r->body(), 'ignorar.png'));
+    expect(DB::table('attachments')->where('id', $keep['id'])->value('youtrack_issue'))->toBe('DEV-8')
+        ->and(DB::table('attachments')->where('id', $skip['id'])->value('youtrack_issue'))->toBeNull();
+
+    // saving again does not upload the same file twice
+    fake_yt_for_create(['yt.test/api/issues/DEV-8?*' => Http::response(['id' => '2-8', 'idReadable' => 'DEV-8', 'summary' => 'x', 'project' => ['shortName' => 'DEV'], 'customFields' => []]), 'yt.test/api/issues/DEV-8' => Http::response(['id' => '2-8'])]);
+    call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertOk()->assertJsonPath('message.meta.attachments', []);
+});
+
+it('still creates the issue when an attachment upload fails and reports it', function () {
+    fake_yt_for_create(['yt.test/api/issues/DEV-8/attachments*' => Http::response(['error' => 'too big'], 413)]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Botão', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major']], 'vê', [UploadedFile::fake()->image('grande.png', 20, 20)]);
+
+    call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertOk()
+        ->assertJsonPath('draft.status', 'created')->assertJsonPath('message.meta.attachments', [])->assertJsonPath('message.meta.attachments_failed', ['grande.png']);
+});
+
+it('attaches the images of the last message when editing an existing issue', function () {
+    fake_yt_for_edit();
+    Http::fake(['yt.test/api/issues/DEV-7/attachments*' => Http::response([['id' => '1-9']])]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'a anexar'], 'anexa esta imagem ao DEV-7', [UploadedFile::fake()->image('print.png', 20, 20)]);
+
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7'])->assertOk()
+        ->assertJsonPath('message.meta.attachments', ['print.png'])->assertJsonPath('message.meta.changes', []);
 });

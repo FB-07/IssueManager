@@ -4,6 +4,7 @@ return [
     'app' => ['live_badge' => 'YouTrack connected', 'name' => 'IssueManager', 'demo_badge' => 'YouTrack simulated'],
 
     'login' => [
+        'no_youtrack' => 'Your account signed in to the Hub but has no access to YouTrack. Ask the administrator to grant the IssueManager service the "YouTrack" scope.',
         'title' => 'Sign in',
         'subtitle' => 'Sign in with your YouTrack account to access your conversations and create issues.',
         'button' => 'Sign in with YouTrack',
@@ -45,7 +46,10 @@ return [
         ],
     ],
 
+    'dropdown' => ['search' => 'Search…', 'none' => 'No results'],
+
     'composer' => [
+        'voice_start' => 'Dictate', 'voice_stop' => 'Stop listening', 'voice_listening' => 'Listening… say your request',
         'draft_toggle' => 'Issue draft',
         'draft_toggle_on' => 'Issue draft on: Claude prepares an issue when there is enough information.',
         'draft_toggle_off' => 'Issue draft off: normal chat with Claude.',
@@ -79,6 +83,8 @@ return [
     ],
 
     'card' => [
+        'section_properties' => 'Properties', 'required_progress' => ':done of :total required',
+        'attachments_title' => 'Attachments for the issue', 'attachments_count' => ':n to send', 'attachments_hint' => 'Checked attachments are added to the YouTrack issue when you create or save it.', 'attachment_sent' => 'Sent to :key',
         'title' => 'Issue draft',
         'revision' => 'rev. :n',
         'status' => ['draft' => 'Draft', 'error' => 'Error'],
@@ -99,8 +105,6 @@ return [
         'none' => 'None',
         'add_label' => 'Add label…',
         'no_summary' => 'No title',
-        'ask_placeholder' => 'Ask for a change to the draft…',
-        'ask' => 'Request change',
         'complete_to_create' => 'Fill in the required fields to be able to create the issue.',
         'confirm_needed' => 'You will review and confirm before it is created.',
         'create' => 'Create Issue in YouTrack',
@@ -122,6 +126,7 @@ return [
     ],
 
     'result' => [
+        'attachments' => 'Attachments sent', 'attachments_failed' => 'Could not attach: :names',
         'changes' => 'Changed',
         'preview' => 'Preview',
         'created_live' => 'Issue created in YouTrack', 'updated_live' => 'Issue updated in YouTrack',
@@ -133,8 +138,6 @@ return [
         'link_demo' => 'Demo link — not functional',
         'summary' => 'Summary',
         'demo_note' => 'This identifier is fictitious. No real issue was created in YouTrack.',
-        'new_chat' => 'New chat',
-        'continue' => 'Continue this conversation',
     ],
 
     'issues' => [
@@ -166,6 +169,7 @@ return [
     ],
 
     'errors' => [
+        'voice_unsupported' => 'This browser does not support voice dictation. Use Chrome, Edge or Safari.', 'voice_denied' => 'The browser is not allowed to use the microphone. Allow it in the site settings.', 'voice_no_mic' => 'No microphone was found.', 'voice_failed' => 'Voice dictation failed. Please try again.',
         'nothing_to_change' => 'I found nothing valid to change on the issue.',
         'unknown_project' => 'Unknown project: :project',
         'tracker_unreachable' => 'Could not reach YouTrack.',

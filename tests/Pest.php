@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,4 +48,13 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/** A user that has logged in through the Hub: their own YouTrack token is what the API calls use. */
+function yt_user(string $token = 'tok', array $attributes = []): User
+{
+    $user = User::factory()->create($attributes);
+    $user->youtrackConnection()->create(['access_token' => $token, 'refresh_token' => 'refresh-'.$token, 'expires_at' => now()->addHour()]);
+
+    return $user;
 }

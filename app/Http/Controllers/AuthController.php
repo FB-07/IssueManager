@@ -6,6 +6,7 @@ use App\Exceptions\TrackerException;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Services\YouTrack\HubOAuth;
+use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -13,6 +14,9 @@ use Illuminate\Support\Str;
 /** Login through the YouTrack Hub. Only invited accounts (php artisan issuemanager:invite) get in. */
 class AuthController extends Controller
 {
+    /** The only account the local dev login signs in (and the only one allowed to use the shared YouTrack token). */
+    public const DEV_EMAIL = 'dev@issuemanager.test';
+
     public function show(HubOAuth $hub)
     {
         return view('login', ['oauthConfigured' => $hub->configured(), 'devLogin' => $this->devLoginAllowed()]);
@@ -39,7 +43,8 @@ class AuthController extends Controller
         }
 
         try {
-            $profile = $hub->profileFromCode((string) $request->query('code'));
+            $token = $hub->exchangeCode((string) $request->query('code'));
+            $profile = $hub->profile($token['access_token']);
         } catch (TrackerException $e) {
             return redirect()->route('login')->with('error', $e->getMessage());
         }
@@ -52,6 +57,21 @@ class AuthController extends Controller
         }
 
         $user->update(['hub_id' => $profile['id'], 'name' => $profile['name'], 'avatar_url' => $profile['avatar']]);
+        $user->youtrackConnection()->updateOrCreate([], [
+            'access_token' => $token['access_token'],
+            'refresh_token' => $token['refresh_token'] ?? null,
+            'expires_at' => now()->addSeconds(max(60, (int) ($token['expires_in'] ?? 3600)) - 30),
+            'scopes' => $token['scope'] ?? null,
+        ]);
+
+        // the account must really be allowed to use YouTrack (the Hub scope for the YouTrack service has to be granted)
+        try {
+            (new YouTrackClient($user->fresh(), $hub))->me();
+        } catch (TrackerException $e) {
+            $user->youtrackConnection()->delete();
+
+            return redirect()->route('login')->with('error', __('ui.login.no_youtrack'));
+        }
 
         return $this->loginAs($request, $user);
     }
@@ -61,7 +81,7 @@ class AuthController extends Controller
     {
         abort_unless($this->devLoginAllowed(), 404);
 
-        return $this->loginAs($request, User::firstOrCreate(['email' => 'dev@issuemanager.test'], ['name' => 'Dev']));
+        return $this->loginAs($request, User::firstOrCreate(['email' => self::DEV_EMAIL], ['name' => 'Dev']));
     }
 
     public function logout(Request $request)

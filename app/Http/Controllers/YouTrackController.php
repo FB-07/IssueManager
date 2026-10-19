@@ -99,7 +99,7 @@ class YouTrackController extends Controller
         try {
             return response()->json($fn(), $status);
         } catch (TrackerException $e) {
-            return response()->json(['message' => $e->getMessage()], $e->status === 404 ? 404 : 502);
+            return $e->response();
         }
     }
 }

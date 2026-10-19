@@ -51,7 +51,7 @@ return [
         'client_id' => env('YOUTRACK_CLIENT_ID'),
         'client_secret' => env('YOUTRACK_CLIENT_SECRET'),
         'redirect' => env('YOUTRACK_REDIRECT_URI'),
-        // Hub's own service id: enough to read the profile of whoever logs in
+        // Space separated Hub service ids: Hub itself (profile) + the YouTrack service, so the user's token can call the YouTrack API
         'scopes' => env('YOUTRACK_SCOPES', '0-0-0-0-0'),
         // Local development only: lets you log in without Hub (never honoured outside APP_ENV=local)
         'dev_login' => (bool) env('AUTH_DEV_LOGIN', false),

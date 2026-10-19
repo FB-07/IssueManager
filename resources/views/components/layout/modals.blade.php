@@ -72,26 +72,16 @@
 
         {{-- filters --}}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            <select class="field py-1.5" x-model="s.issueFilters.project" @change="s.onIssueProjectChange()" x-bind:aria-label="s.t('fields.project')">
-                <option value="" x-text="s.t('issues.all_projects')"></option>
-                <template x-for="p in s.issueFilterOptions.projects" x-bind:key="p.key"><option x-bind:value="p.key" x-text="p.key + ' · ' + p.name" x-bind:selected="s.issueFilters.project === p.key"></option></template>
-            </select>
-            <select class="field py-1.5" x-model="s.issueFilters.type" @change="s.applyIssueFilters()" x-bind:aria-label="s.t('fields.type')">
-                <option value="" x-text="s.t('issues.all_types')"></option>
-                <template x-for="o in s.issueFilterOptions.types" x-bind:key="o"><option x-bind:value="o" x-text="s.lbl('type', o)" x-bind:selected="s.issueFilters.type === o"></option></template>
-            </select>
-            <select class="field py-1.5" x-model="s.issueFilters.priority" @change="s.applyIssueFilters()" x-bind:aria-label="s.t('fields.priority')">
-                <option value="" x-text="s.t('issues.all_priorities')"></option>
-                <template x-for="o in s.issueFilterOptions.priorities" x-bind:key="o"><option x-bind:value="o" x-text="s.lbl('priority', o)" x-bind:selected="s.issueFilters.priority === o"></option></template>
-            </select>
-            <select class="field py-1.5" x-model="s.issueFilters.state" @change="s.applyIssueFilters()" x-bind:aria-label="s.t('issues.state')">
-                <option value="" x-text="s.t('issues.all_states')"></option>
-                <template x-for="o in s.issueFilterOptions.states" x-bind:key="o"><option x-bind:value="o" x-text="s.lbl('state', o)" x-bind:selected="s.issueFilters.state === o"></option></template>
-            </select>
-            <select class="field py-1.5" x-model="s.issueFilters.assignee" @change="s.applyIssueFilters()" x-bind:aria-label="s.t('fields.assignee')">
-                <option value="" x-text="s.t('issues.all_assignees')"></option>
-                <template x-for="a in s.issueFilterOptions.assignees" x-bind:key="a.value"><option x-bind:value="a.value" x-text="a.label" x-bind:selected="s.issueFilters.assignee === a.value"></option></template>
-            </select>
+            <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.project" select="s.issueFilters.project = $value; s.onIssueProjectChange()"
+                options="s.issueFilterOptions.projects.map((p) => ({ value: p.key, label: p.key + ' · ' + p.name }))" empty-label="s.t('issues.all_projects')" label="s.t('fields.project')" />
+            <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.type" select="s.issueFilters.type = $value; s.applyIssueFilters()"
+                options="s.issueFilterOptions.types.map((o) => ({ value: o, label: s.lbl('type', o) }))" empty-label="s.t('issues.all_types')" label="s.t('fields.type')" />
+            <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.priority" select="s.issueFilters.priority = $value; s.applyIssueFilters()"
+                options="s.issueFilterOptions.priorities.map((o) => ({ value: o, label: s.lbl('priority', o) }))" empty-label="s.t('issues.all_priorities')" label="s.t('fields.priority')" />
+            <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.state" select="s.issueFilters.state = $value; s.applyIssueFilters()"
+                options="s.issueFilterOptions.states.map((o) => ({ value: o, label: s.lbl('state', o) }))" empty-label="s.t('issues.all_states')" label="s.t('issues.state')" />
+            <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.assignee" select="s.issueFilters.assignee = $value; s.applyIssueFilters()"
+                options="s.issueFilterOptions.assignees" empty-label="s.t('issues.all_assignees')" label="s.t('fields.assignee')" />
             <button type="button" class="btn-ghost btn py-1.5" x-show="s.issueFiltersActive" @click="s.resetIssueFilters()"><x-ui.icon name="x" /><span x-text="s.t('issues.clear')"></span></button>
         </div>
 
@@ -115,10 +105,9 @@
         <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted" x-show="s.issueResults.length">
             <p x-text="s.issueRange ? (s.issueTotal !== null ? s.t('issues.range', { from: s.issueRange.from, to: s.issueRange.to, total: s.issueTotal }) : s.t('issues.range_unknown', { from: s.issueRange.from, to: s.issueRange.to })) : ''"></p>
             <div class="flex items-center gap-1.5">
-                <label class="mr-2 flex items-center gap-1.5"><span x-text="s.t('issues.per_page')"></span>
-                    <select class="field w-auto py-1 pr-7 text-xs" x-bind:value="s.issuePerPage" @change="s.setIssuePerPage($event.target.value)">
-                        <template x-for="n in [25, 50, 100]" x-bind:key="n"><option x-bind:value="n" x-text="n" x-bind:selected="s.issuePerPage === n"></option></template>
-                    </select></label>
+                <div class="mr-2 flex items-center gap-1.5"><span x-text="s.t('issues.per_page')"></span>
+                    <x-ui.select width="w-auto" trigger="w-20 py-1 text-xs" value="s.issuePerPage" select="s.setIssuePerPage($value)"
+                        options="[25, 50, 100].map((n) => ({ value: n, label: String(n) }))" searchable="false" label="s.t('issues.per_page')" /></div>
                 <button type="button" class="btn-icon size-8 rotate-180" @click="s.goToIssuePage(s.issuePage - 1)" x-bind:disabled="s.issuePage <= 1 || s.issuesLoading" x-bind:aria-label="s.t('issues.prev')"><x-ui.icon name="chevron-right" /></button>
                 <template x-for="(n, idx) in s.issuePageButtons" x-bind:key="idx">
                     <span>
@@ -139,9 +128,9 @@
                 <div><label class="label" x-text="s.t('fields.description')"></label><textarea rows="5" class="field" x-model="s.issueEdit.description"></textarea></div>
                 <div class="grid gap-4 sm:grid-cols-2">
                     <div><label class="label" x-text="s.t('fields.type')"></label>
-                        <select class="field" x-model="s.issueEdit.type"><template x-for="o in (s.issueMeta?.types ?? [])" x-bind:key="o"><option x-bind:value="o" x-text="s.lbl('type', o)" x-bind:selected="s.issueEdit.type === o"></option></template></select></div>
+                        <x-ui.select value="s.issueEdit.type" select="s.issueEdit.type = $value" options="(s.issueMeta?.types ?? []).map((o) => ({ value: o, label: s.lbl('type', o) }))" label="s.t('fields.type')" /></div>
                     <div><label class="label" x-text="s.t('fields.priority')"></label>
-                        <select class="field" x-model="s.issueEdit.priority"><template x-for="o in (s.issueMeta?.priorities ?? [])" x-bind:key="o"><option x-bind:value="o" x-text="s.lbl('priority', o)" x-bind:selected="s.issueEdit.priority === o"></option></template></select></div>
+                        <x-ui.select value="s.issueEdit.priority" select="s.issueEdit.priority = $value" options="(s.issueMeta?.priorities ?? []).map((o) => ({ value: o, label: s.lbl('priority', o) }))" label="s.t('fields.priority')" /></div>
                 </div>
                 <div class="flex justify-end gap-2">
                     <button type="button" class="btn" @click="s.issueEdit = null" x-text="s.t('common.back')"></button>

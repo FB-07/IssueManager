@@ -28,3 +28,9 @@ it('ships complete translations for every locale', function () {
     $en = array_keys($flat($loader->load('en', 'ui')));
     expect(array_diff($pt, $en))->toBe([])->and(array_diff($en, $pt))->toBe([]);
 });
+
+it('redirects plain http to https (temporarily) when the app is served over https', function () {
+    config(['app.force_https' => true]);
+    $this->get('http://issuemanager.test/login?x=1')->assertStatus(302)->assertRedirect('https://issuemanager.test/login?x=1');
+    $this->get('https://issuemanager.test/login')->assertOk();
+});

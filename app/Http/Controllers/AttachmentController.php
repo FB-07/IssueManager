@@ -11,6 +11,15 @@ class AttachmentController extends Controller
 {
     use ScopesToUser;
 
+    /** Choose whether a conversation file is sent to the YouTrack issue. */
+    public function update(Request $request, Attachment $attachment)
+    {
+        abort_unless($attachment->conversation->user_id === $request->user()->id, 404);
+        $attachment->update($request->validate(['to_issue' => ['required', 'boolean']]));
+
+        return ['id' => $attachment->id, 'to_issue' => $attachment->to_issue, 'uploaded_to' => $attachment->youtrack_issue];
+    }
+
     public function show(Request $request, Attachment $attachment)
     {
         abort_unless($attachment->conversation->user_id === $request->user()->id, 404);

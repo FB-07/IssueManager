@@ -54,6 +54,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // Redirect http to https and generate https links (on by default when APP_URL starts with https://)
+    'force_https' => (bool) env('APP_FORCE_HTTPS', str_starts_with((string) env('APP_URL'), 'https://')),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

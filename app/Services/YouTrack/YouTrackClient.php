@@ -3,8 +3,11 @@
 namespace App\Services\YouTrack;
 
 use App\Exceptions\TrackerException;
+use App\Http\Controllers\AuthController;
+use App\Models\User;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -23,14 +26,62 @@ class YouTrackClient
     /** Fields handled explicitly; every other enum-like project field is exposed as a custom field. */
     private const KNOWN = ['Type', 'Priority', 'Subsystem', 'Assignee', 'State'];
 
+    /**
+     * Each logged-in user calls YouTrack with their own Hub token; the shared token is only a local development fallback.
+     * `$user` is only passed explicitly during the login callback; otherwise the user is looked up on every call, so a
+     * client kept alive across requests (cached controller instance, Octane…) can never act as someone else.
+     */
+    public function __construct(private readonly ?User $user = null, private readonly ?HubOAuth $oauth = null) {}
+
+    private function user(): ?User
+    {
+        return $this->user ?? Auth::user();
+    }
+
+    /** True when a YouTrack URL and a way to authenticate (Hub login or the shared dev token) are configured. */
     public static function configured(): bool
     {
-        return filled(config('services.youtrack.token')) && filled(config('services.youtrack.url'));
+        return filled(config('services.youtrack.url'))
+            && (filled(config('services.youtrack.token')) || filled(config('services.youtrack.client_id')));
+    }
+
+    /** Token of the current user (refreshed when about to expire). @throws TrackerException status 401 when there is none */
+    private function token(): string
+    {
+        $conn = $this->user()?->youtrackConnection;
+
+        if ($conn) {
+            if ($conn->expires_at && $conn->expires_at->subMinute()->isPast()) {
+                $conn = ($this->oauth ?? app(HubOAuth::class))->refresh($conn);
+            }
+
+            return $conn->access_token;
+        }
+
+        // only the local "dev login" account (no Hub token) may use the shared one, and only in local development
+        if (app()->isLocal() && config('services.youtrack.dev_login') && filled(config('services.youtrack.token'))
+            && $this->user()?->email === AuthController::DEV_EMAIL) {
+            return (string) config('services.youtrack.token');
+        }
+
+        throw new TrackerException(__('ui.errors.session_expired'), 401);
+    }
+
+    /** Caches are per user: what a person can see depends on their permissions. */
+    private function cacheKey(string $name): string
+    {
+        return 'yt.'.($this->user()?->id ?? 'guest').'.'.$name;
+    }
+
+    /** Cheap call used right after login to check the account really has access to YouTrack. */
+    public function me(): array
+    {
+        return $this->get('/api/users/me', ['fields' => 'id,login,fullName']);
     }
 
     public function projects(): array
     {
-        return Cache::remember('yt.projects', 120, function () {
+        return Cache::remember($this->cacheKey('projects'), 120, function () {
             $rows = $this->get('/api/admin/projects', ['fields' => 'id,shortName,name,archived', '$top' => 200]);
 
             return collect($rows)->reject(fn ($p) => $p['archived'] ?? false)
@@ -40,7 +91,7 @@ class YouTrackClient
 
     public function meta(string $projectKey): array
     {
-        return Cache::remember("yt.meta.$projectKey", 120, function () use ($projectKey) {
+        return Cache::remember($this->cacheKey("meta.$projectKey"), 120, function () use ($projectKey) {
             $id = $this->projectId($projectKey);
             $fields = $this->get("/api/admin/projects/$id/customFields", [
                 'fields' => 'field(name),bundle(values(name)),$type',
@@ -113,7 +164,7 @@ class YouTrackClient
     /** Total issues for a query. YouTrack computes it asynchronously (-1 while pending), so retry briefly. */
     public function count(string $query): ?int
     {
-        return Cache::remember('yt.count.'.md5($query), 60, function () use ($query) {
+        return Cache::remember($this->cacheKey('count.'.md5($query)), 60, function () use ($query) {
             try {
                 for ($i = 0; $i < 4; $i++) {
                     $r = $this->send('post', '/api/issuesGetter/count', ['fields' => 'count'], ['query' => $query]);
@@ -195,6 +246,23 @@ class YouTrackClient
         }
 
         return str_contains($this->getIssue($id)['summary'], $prefix) ? $this->withPrefix($summary) : $summary;
+    }
+
+    /** Uploads one file to an issue (`$key` is the readable id, e.g. DEV-12). */
+    public function attach(string $key, string $name, string $mime, string $contents): void
+    {
+        try {
+            $r = Http::withToken($this->token())->acceptJson()->timeout(60)->baseUrl(config('services.youtrack.url'))
+                ->attach('file', $contents, $name, ['Content-Type' => $mime ?: 'application/octet-stream'])
+                ->post("/api/issues/$key/attachments?fields=id,name");
+        } catch (ConnectionException) {
+            throw new TrackerException(__('ui.errors.tracker_unreachable'));
+        }
+
+        if ($r->failed()) {
+            Log::warning('YouTrack attachment upload failed', ['status' => $r->status(), 'issue' => $key, 'name' => $name]);
+            throw new TrackerException(__('ui.errors.tracker_error', ['status' => $r->status()]), $r->status());
+        }
     }
 
     public function withPrefix(string $summary): string
@@ -334,7 +402,7 @@ class YouTrackClient
 
     private function http(): PendingRequest
     {
-        return Http::withToken(config('services.youtrack.token'))->acceptJson()->timeout(20)
+        return Http::withToken($this->token())->acceptJson()->timeout(20)
             ->baseUrl(config('services.youtrack.url'));
     }
 
@@ -359,7 +427,8 @@ class YouTrackClient
         if ($r->failed()) {
             Log::warning('YouTrack API error', ['status' => $r->status(), 'body' => mb_substr($r->body(), 0, 500)]);
             $msg = match (true) {
-                in_array($r->status(), [401, 403], true) => __('ui.errors.tracker_auth'),
+                $r->status() === 401 => __('ui.errors.session_expired'),
+                $r->status() === 403 => __('ui.errors.tracker_auth'),
                 $r->status() === 404 => __('ui.errors.issue_not_found'),
                 $r->status() === 400 => (string) ($r->json('error_description') ?? __('ui.errors.tracker_error', ['status' => 400])),
                 default => __('ui.errors.tracker_error', ['status' => $r->status()]),

@@ -16,7 +16,7 @@
 
             <textarea id="composer-input" rows="1" maxlength="20000"
                       class="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-relaxed placeholder:text-faint focus:outline-none"
-                      x-bind:placeholder="s.t('composer.placeholder')" x-bind:aria-label="s.t('composer.placeholder')"
+                      x-bind:placeholder="s.voice.listening ? s.t('composer.voice_listening') : s.t('composer.placeholder')" x-bind:aria-label="s.t('composer.placeholder')"
                       x-model="s.composer.text" @input="s.autosize($el)" @keydown="s.onComposerKey($event)" @paste="s.onPaste($event)"
                       x-effect="s.composer.text; $nextTick(() => s.autosize($el))"></textarea>
 
@@ -26,6 +26,12 @@
                        @change="s.addFiles($el.files); $el.value = ''">
                 <button type="button" class="btn-icon" @click="document.getElementById('file-input').click()" x-bind:aria-label="s.t('composer.attach')" x-bind:title="s.t('composer.attach')"><x-ui.icon name="paperclip" class="size-[18px]" /></button>
 
+                <button type="button" class="btn-icon relative" x-show="s.voice.supported" @click="s.toggleVoice()" x-bind:disabled="s.processing"
+                        x-bind:aria-pressed="s.voice.listening" x-bind:aria-label="s.voice.listening ? s.t('composer.voice_stop') : s.t('composer.voice_start')" x-bind:title="s.voice.listening ? s.t('composer.voice_stop') : s.t('composer.voice_start')"
+                        x-bind:class="s.voice.listening && 'bg-danger-soft text-danger'">
+                    <x-ui.icon name="mic" class="size-[18px]" />
+                    <span class="absolute right-1.5 top-1.5 size-2 animate-ping rounded-full bg-danger" x-show="s.voice.listening" aria-hidden="true"></span>
+                </button>
                 <button type="button" role="switch" x-bind:aria-checked="s.draftEnabled" @click="s.draftEnabled = !s.draftEnabled"
                         class="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition"
                         x-bind:class="s.draftEnabled ? 'border-accent/40 bg-accent-soft text-accent' : 'border-line text-muted hover:text-fg'"

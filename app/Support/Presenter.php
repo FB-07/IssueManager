@@ -26,6 +26,8 @@ class Presenter
             'attachments' => $m->attachments->map(fn ($a) => [
                 'id' => $a->id, 'kind' => $a->kind, 'name' => $a->name, 'size' => $a->size, 'mime' => $a->mime,
                 'url' => route('attachments.show', $a),
+                'to_issue' => $a->to_issue,
+                'uploaded_to' => $a->youtrack_issue,
             ])->values()->all(),
         ];
     }

@@ -42,7 +42,7 @@ class TurnController extends Controller
                 ? DraftPatch::sanitize($reply['draft_patch'] ?? null, $c->draft?->project, $yt)
                 : null;
         } catch (TrackerException $e) {
-            return response()->json(['message' => $e->getMessage()], 502);
+            return $e->response();
         }
 
         return DB::transaction(function () use ($request, $c, $text, $reply, $patch) {

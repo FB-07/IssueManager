@@ -32,6 +32,14 @@
             <dd class="break-words" x-text="m.meta.summary"></dd>
         </dl>
 
+        <div class="mt-3 flex flex-wrap items-center gap-1.5 text-xs" x-show="m.meta.attachments?.length">
+            <span class="text-muted" x-text="s.t('result.attachments')"></span>
+            <template x-for="n in m.meta.attachments" x-bind:key="n"><span class="chip"><x-ui.icon name="paperclip" class="size-3" /><span x-text="n"></span></span></template>
+        </div>
+        <p class="mt-2 flex items-start gap-1.5 text-xs text-warn" x-show="m.meta.attachments_failed?.length">
+            <x-ui.icon name="alert" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('result.attachments_failed', { names: (m.meta.attachments_failed ?? []).join(', ') })"></span>
+        </p>
+
         <p class="mt-3 text-xs text-muted" x-show="m.meta.demo" x-text="s.t('result.demo_note')"></p>
 
         {{-- read-only snapshot of what was sent --}}
@@ -53,9 +61,5 @@
             </div>
         </details>
 
-        <div class="mt-4 flex flex-wrap gap-2" x-show="!m.meta.dismissed">
-            <button type="button" class="btn btn-primary" @click="s.newChat()"><x-ui.icon name="plus" /><span x-text="s.t('result.new_chat')"></span></button>
-            <button type="button" class="btn" @click="s.continueConversation(m)"><x-ui.icon name="message" /><span x-text="s.t('result.continue')"></span></button>
-        </div>
     </div>
 </div>

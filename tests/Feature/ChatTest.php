@@ -1,11 +1,10 @@
 <?php
 
-use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
-    test()->actingAs(User::factory()->create());
+    test()->actingAs(yt_user());
     config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
 });
 

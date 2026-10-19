@@ -6,8 +6,10 @@
 
     {{-- brand --}}
     <div class="flex h-14 shrink-0 items-center gap-2.5 px-4">
-        <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg"><x-ui.icon name="logo" class="size-[18px]" /></span>
-        <span class="truncate text-[15px] font-semibold tracking-tight" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('app.name')"></span>
+        <a href="{{ route('home') }}" class="flex min-w-0 items-center" x-bind:aria-label="s.t('app.name')" x-bind:title="s.t('app.name')" @click.prevent="s.newChat()">
+            <img src="{{ asset('images/proside-logo.png') }}" alt="Proside" width="560" height="158" class="logo-adaptive h-7 w-auto select-none" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" draggable="false">
+            <img src="{{ asset('images/proside-mark.png') }}" alt="Proside" width="300" height="146" class="logo-adaptive hidden h-5 w-auto select-none" x-bind:class="s.sidebarCollapsed && 'lg:block'" draggable="false">
+        </a>
         <button type="button" class="btn-icon ml-auto size-8 lg:hidden" @click="s.sidebarOpen = false" x-bind:aria-label="s.t('common.close')"><x-ui.icon name="x" /></button>
     </div>
 

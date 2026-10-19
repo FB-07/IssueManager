@@ -4,20 +4,22 @@ use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Cookie\CookieValuePrefix;
 use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     config([
         'services.youtrack.hub_url' => 'https://hub.test/hub', 'services.youtrack.client_id' => 'cid',
         'services.youtrack.client_secret' => 'secret', 'services.youtrack.redirect' => 'http://issuemanager.test/auth/youtrack/callback',
-        'services.youtrack.dev_login' => false,
+        'services.youtrack.dev_login' => false, 'services.youtrack.url' => 'https://yt.test',
     ]);
 });
 
-function hub_login(string $id = 'hub-1', ?string $email = 'ana@proside.pt', array $cookies = [])
+function hub_login(string $id = 'hub-1', ?string $email = 'ana@proside.pt', array $cookies = [], bool $youtrackAccess = true)
 {
     Http::fake([
-        'hub.test/hub/api/rest/oauth2/token' => Http::response(['access_token' => 'at']),
+        'hub.test/hub/api/rest/oauth2/token' => Http::response(['access_token' => 'at-'.$id, 'refresh_token' => 'rt-'.$id, 'expires_in' => 3600, 'scope' => '0-0-0-0-0 yt']),
+        'yt.test/api/users/me*' => $youtrackAccess ? Http::response(['id' => '1-1', 'login' => 'ana']) : Http::response(['error' => 'forbidden'], 403),
         'hub.test/hub/api/rest/users/me*' => Http::response(['id' => $id, 'name' => 'Ana Silva', 'profile' => ['email' => ['email' => $email], 'avatar' => ['url' => 'https://a/x.png']]]),
     ]);
 
@@ -93,4 +95,30 @@ it('invites and removes accounts from the command line', function () {
     expect(User::where('email', 'new@proside.pt')->exists())->toBeTrue();
     $this->artisan('issuemanager:invite', ['email' => 'new@proside.pt', '--remove' => true])->expectsConfirmation('Delete new@proside.pt and all their conversations?', 'yes')->assertSuccessful();
     expect(User::count())->toBe(0);
+});
+
+it('always sends the redirect uri built from APP_URL, even if the page was opened over a different scheme', function () {
+    config(['services.youtrack.redirect' => null, 'app.url' => 'http://issuemanager.test']);
+
+    $loc = $this->get('https://issuemanager.test/auth/youtrack/redirect')->headers->get('Location');
+
+    expect($loc)->toContain('redirect_uri='.rawurlencode('http://issuemanager.test/auth/youtrack/callback'));
+});
+
+it('stores the Hub token encrypted and checks YouTrack access on login', function () {
+    $user = User::factory()->create(['email' => 'ana@proside.pt']);
+    hub_login('hub-1', 'ana@proside.pt')->assertRedirect(route('home'));
+
+    $conn = $user->fresh()->youtrackConnection;
+    expect($conn->access_token)->toBe('at-hub-1')->and($conn->refresh_token)->toBe('rt-hub-1');
+    expect(DB::table('youtrack_connections')->value('access_token'))->not->toContain('at-hub-1');
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'yt.test/api/users/me') && $r->hasHeader('Authorization', 'Bearer at-hub-1'));
+});
+
+it('refuses the login when the account has no access to YouTrack', function () {
+    $user = User::factory()->create(['email' => 'ana@proside.pt']);
+    hub_login('hub-1', 'ana@proside.pt', [], youtrackAccess: false)->assertRedirect('/login')->assertSessionHas('error');
+
+    $this->assertGuest();
+    expect($user->fresh()->youtrackConnection)->toBeNull();
 });

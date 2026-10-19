@@ -11,7 +11,7 @@
 <body class="flex min-h-dvh items-center justify-center px-4">
 <main class="w-full max-w-sm">
     <div class="mb-8 flex flex-col items-center text-center">
-        <span class="mb-5 flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-fg"><x-ui.icon name="logo" class="size-6" /></span>
+        <img src="{{ asset('images/proside-logo.png') }}" alt="Proside" width="560" height="158" class="logo-adaptive mb-6 h-10 w-auto select-none" draggable="false">
         <h1 class="text-2xl font-semibold tracking-tight">{{ __('ui.login.title') }}</h1>
         <p class="mt-2 text-sm leading-relaxed text-muted">{{ __('ui.login.subtitle') }}</p>
     </div>

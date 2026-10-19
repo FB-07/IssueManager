@@ -61,6 +61,8 @@ export function createStore(boot) {
 
         // ---- composer ----------------------------------------------------
         composer: { text: '', files: [] },
+        // dictation through the browser's speech recognition (Chrome/Edge/Safari); hidden where unsupported
+        voice: { supported: !!(window.SpeechRecognition || window.webkitSpeechRecognition), listening: false },
 
         // ---- issues browser ---------------------------------------------
         issueFilters: { q: '', project: '', type: '', priority: '', state: '', assignee: '' },
@@ -192,6 +194,7 @@ export function createStore(boot) {
             this.pending.clear();
         },
         newChat() {
+            this.stopVoice();
             this.resetChat();
             this.sidebarOpen = false;
             this.clearComposer();
@@ -358,6 +361,7 @@ export function createStore(boot) {
             const files = fromComposer ? [...this.composer.files] : [];
             if (!body && !files.length) return;
 
+            this.stopVoice();
             this.processing = true;
             this.streaming = false;
             let temp = null;
@@ -514,6 +518,57 @@ export function createStore(boot) {
             const el = document.getElementById('chat-scroll');
             if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTo({ top: el.scrollHeight });
         },
+        // ---- voice dictation -----------------------------------------------
+        toggleVoice() {
+            return this.voice.listening ? this.stopVoice() : this.startVoice();
+        },
+        startVoice() {
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SR) return this.notify(this.t('errors.voice_unsupported'), 'error');
+            if (this.processing || this.voice.listening) return;
+
+            const rec = new SR();
+            rec.lang = this.locale === 'pt' ? 'pt-PT' : 'en-US';
+            rec.continuous = true;
+            rec.interimResults = true;
+            rec.maxAlternatives = 1;
+
+            const base = this.composer.text.trim();
+            let finals = '';
+            rec.onresult = (e) => {
+                let interim = '';
+                for (let i = e.resultIndex; i < e.results.length; i++) {
+                    const r = e.results[i];
+                    if (r.isFinal) finals += r[0].transcript;
+                    else interim += r[0].transcript;
+                }
+                this.composer.text = [base, `${finals}${interim}`.trim()].filter(Boolean).join(' ');
+            };
+            rec.onerror = (e) => {
+                if (e.error === 'no-speech' || e.error === 'aborted') return;
+                const key = { 'not-allowed': 'voice_denied', 'service-not-allowed': 'voice_denied', 'audio-capture': 'voice_no_mic' }[e.error] ?? 'voice_failed';
+                this.notify(this.t(`errors.${key}`), 'error');
+            };
+            rec.onend = () => {
+                this.voice.listening = false;
+                this.voiceRecognition = null;
+            };
+
+            try {
+                rec.start();
+                this.voiceRecognition = rec;
+                this.voice.listening = true;
+                this.focusComposer();
+            } catch (e) {
+                this.notify(this.t('errors.voice_failed'), 'error');
+            }
+        },
+        stopVoice() {
+            try {
+                this.voiceRecognition?.stop();
+            } catch (e) {}
+            this.voice.listening = false;
+        },
         onComposerKey(e) {
             if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
@@ -593,6 +648,28 @@ export function createStore(boot) {
             return this.metaByProject[this.draft?.project] ?? this.metaByProject[this.projects?.[0]?.key] ?? { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
         },
 
+        // ---- attachments that go to the YouTrack issue ----------------------
+        /** Every file/image sent in this conversation (they can be attached to the issue). */
+        get conversationAttachments() {
+            return this.messages
+                .filter((m) => m.role === 'user')
+                .flatMap((m) => m.attachments ?? [])
+                .filter((a) => typeof a.id === 'number' && a.url);
+        },
+        get pendingAttachmentCount() {
+            return this.conversationAttachments.filter((a) => a.to_issue && !a.uploaded_to).length;
+        },
+        async toggleAttachment(a) {
+            const next = !a.to_issue;
+            a.to_issue = next;
+            try {
+                await api('PATCH', `/api/attachments/${a.id}`, { to_issue: next });
+            } catch (e) {
+                a.to_issue = !next;
+                this.notify(e.message, 'error');
+            }
+        },
+
         // ---- draft (the single issue card) -------------------------------
         get missing() {
             return this.draft ? REQUIRED.filter((f) => !String(this.draft[f] ?? '').trim()) : [];
@@ -657,10 +734,6 @@ export function createStore(boot) {
                 setTimeout(() => el.focus(), 250);
             }
         },
-        askChange(text) {
-            const t = (text ?? '').trim();
-            if (t) this.send(t);
-        },
 
         // ---- simulated / real creation ------------------------------------
         async openConfirm() {
@@ -687,10 +760,6 @@ export function createStore(boot) {
             } finally {
                 this.creating = false;
             }
-        },
-        continueConversation(message) {
-            message.meta = { ...message.meta, dismissed: true };
-            this.focusComposer();
         },
 
         // ---- issues browser -----------------------------------------------

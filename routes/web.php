@@ -29,6 +29,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/preferences', [PreferenceController::class, 'update']);
         Route::post('/chat', ChatController::class)->middleware('throttle:30,1')->name('chat');
 
+        Route::patch('/attachments/{attachment}', [AttachmentController::class, 'update'])->whereNumber('attachment');
         Route::post('/conversations', [ConversationController::class, 'store']);
         Route::delete('/conversations', [ConversationController::class, 'destroyMany']);
         Route::get('/conversations/{conversation}', [ConversationController::class, 'show'])->whereNumber('conversation');
