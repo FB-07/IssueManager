@@ -95,3 +95,17 @@ it('reports a total of zero instead of treating it as unknown', function () {
     Http::fake(['yt.test/api/issuesGetter/count*' => Http::response(['count' => 0])]);
     expect(app(YouTrackClient::class)->count('project: {EMPTY}'))->toBe(0);
 });
+
+it('lists look-alike issues for a draft title without failing the draft when YouTrack errors', function () {
+    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
+    $conv = $conv->id;
+    $row = ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Erro no pagamento', 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+    Http::fake(['yt.test/api/issues?*' => Http::sequence()->push([$row])->push([], 500)]);
+
+    $this->getJson("/api/conversations/$conv/draft/similar?project=DEV&summary=Erro+no+pagamento+multibanco")
+        ->assertOk()->assertJsonPath('issues.0.id', 'DEV-1');
+    $this->getJson("/api/conversations/$conv/draft/similar?project=DEV&summary=")->assertOk()->assertJsonCount(0, 'issues');
+
+    $this->getJson("/api/conversations/$conv/draft/similar?project=DEV&summary=outro+titulo")->assertOk()->assertJsonCount(0, 'issues');
+});

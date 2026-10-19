@@ -1,4 +1,4 @@
-<div class="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm" x-data="{ labelInput: '' }" aria-label="Issue">
+<div class="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm" x-data="{ labelInput: '' }" x-effect="s.watchSimilar(s.draft.summary, s.draft.project)" aria-label="Issue">
 
     {{-- header --}}
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5">
@@ -63,6 +63,21 @@
                 <textarea id="field-description" rows="8" class="field resize-y font-mono text-[13px] leading-relaxed" x-bind:class="s.missing.includes('description') && 'field-invalid'"
                           x-model="s.draft.description" @input="s.setField('description', $event.target.value)"></textarea>
             </x-issue.field>
+        </div>
+
+        {{-- possible duplicates --}}
+        <div class="rounded-xl border border-warn/30 bg-warn-soft px-3.5 py-3" x-show="s.similarIssues.length && s.draft.status !== 'created'" x-cloak role="status">
+            <p class="flex items-center gap-2 text-xs font-medium text-warn"><x-ui.icon name="alert" class="size-3.5" /><span x-text="s.t('similar.title')"></span></p>
+            <p class="mt-0.5 text-xs text-muted" x-text="s.t('similar.hint')"></p>
+            <ul class="mt-2 space-y-1">
+                <template x-for="i in s.similarIssues" x-bind:key="i.id">
+                    <li class="flex items-baseline gap-2 text-sm">
+                        <a class="shrink-0 font-medium text-accent hover:underline" x-bind:href="i.url" target="_blank" rel="noopener" x-text="i.id"></a>
+                        <span class="min-w-0 truncate" x-text="i.summary"></span>
+                        <span class="badge ml-auto shrink-0 bg-surface-3 text-muted" x-show="i.state" x-text="s.lbl('state', i.state)"></span>
+                    </li>
+                </template>
+            </ul>
         </div>
 
         {{-- properties --}}

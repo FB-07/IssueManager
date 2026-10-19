@@ -64,6 +64,7 @@ return [
     ],
 
     'chat' => [
+        'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
         'updating' => 'Updating the issue in YouTrack…', 'updating_issue' => 'Updating the issue in YouTrack.',
         'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
 
@@ -83,6 +84,10 @@ return [
         'state' => ['Submitted' => 'Submitted', 'Open' => 'Open', 'In Progress' => 'In progress', 'Reopened' => 'Reopened', 'Duplicate' => 'Duplicate', 'Testing' => 'Testing', 'Completed' => 'Completed', 'Stand-By' => 'Stand-by', 'Closed' => 'Closed'],
     ],
 
+    'similar' => [
+        'title' => 'Similar issues already exist',
+        'hint' => 'Check these before creating a duplicate.',
+    ],
     'card' => [
         'section_properties' => 'Properties', 'required_progress' => ':done of :total required',
         'attachments_title' => 'Attachments for the issue', 'attachments_count' => ':n to send', 'attachments_hint' => 'Checked attachments are added to the YouTrack issue when you create or save it.', 'attachment_sent' => 'Sent to :key',

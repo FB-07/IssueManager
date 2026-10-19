@@ -38,6 +38,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/conversations/{conversation}/turn', TurnController::class)->whereNumber('conversation');
         Route::patch('/conversations/{conversation}/draft', [DraftController::class, 'update'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/issues/update', IssueEditController::class)->whereNumber('conversation');
+        Route::get('/conversations/{conversation}/draft/similar', [DraftController::class, 'similar'])->whereNumber('conversation')->middleware('throttle:60,1');
         Route::post('/conversations/{conversation}/draft/create', [DraftController::class, 'create'])->whereNumber('conversation');
 
         Route::get('/youtrack/image', [YouTrackController::class, 'image'])->middleware('throttle:600,1');

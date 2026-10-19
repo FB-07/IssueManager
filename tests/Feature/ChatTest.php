@@ -48,12 +48,12 @@ it('streams text and the draft tool call as SSE and sends the tool only when ena
 
     Http::assertSent(fn ($r) => $r->header('x-api-key')[0] === 'test-key'
         && $r['stream'] === true
-        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'update_issue', 'find_issues', 'get_issue']
+        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'find_issues', 'get_issue']
         && str_contains($r['system'], 'NO suggestions'));
 
     Http::fake(['api.anthropic.com/*' => Http::response(sse([]), 200)]);
     $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
-    Http::assertSent(fn ($r) => collect($r['tools'])->pluck('name')->all() === ['create_issue', 'update_issue', 'find_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
+    Http::assertSent(fn ($r) => collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'find_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
 });
 
 it('sends images as base64 blocks and never leaks the key on API errors', function () {
@@ -109,4 +109,44 @@ it('runs find_issues on the server, feeds the result back and then forwards the 
         ->and($second['messages'][1]['content'][0])->toMatchArray(['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'find_issues'])
         ->and($second['messages'][2]['content'][0])->toMatchArray(['type' => 'tool_result', 'tool_use_id' => 'tu_1'])
         ->and($second['messages'][2]['content'][0]['content'])->toContain('DEV-12')->toContain('Botão de pagar falha');
+});
+
+it('forwards suggest_replies as a sanitized replies event (max 4, no duplicates, valid kinds)', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    $input = json_encode(['replies' => [
+        ['label' => 'Produção', 'kind' => 'text'],
+        ['label' => 'Fábio Barros', 'text' => 'Atribui ao Fábio Barros', 'kind' => 'person', 'value' => 'fabio.barros'],
+        ['label' => 'produção'], // duplicate (case-insensitive)
+        ['label' => 'Proximo', 'kind' => 'project', 'value' => '2010043'],
+        ['label' => 'Staging', 'kind' => 'evil'], // unknown kind -> text
+        ['label' => 'Quinto botão'], // beyond the cap
+        ['label' => '   '], ['nothing' => true],
+    ]]);
+    Http::fake(['api.anthropic.com/*' => Http::response(sse([
+        ['type' => 'content_block_start', 'index' => 0, 'content_block' => ['type' => 'tool_use', 'name' => 'suggest_replies']],
+        ['type' => 'content_block_delta', 'index' => 0, 'delta' => ['type' => 'input_json_delta', 'partial_json' => $input]],
+        ['type' => 'content_block_stop', 'index' => 0],
+        ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
+    ]), 200)]);
+
+    $out = $this->post('/api/chat', chatPayload())->streamedContent();
+
+    preg_match('/event: replies\ndata: (.+)\n/', $out, $m);
+    $replies = json_decode($m[1], true)['replies'];
+
+    expect($out)->toContain('event: done')->not->toContain('event: error')
+        ->and(array_column($replies, 'label'))->toBe(['Produção', 'Fábio Barros', 'Proximo', 'Staging'])
+        ->and($replies[1])->toBe(['label' => 'Fábio Barros', 'text' => 'Atribui ao Fábio Barros', 'kind' => 'person', 'value' => 'fabio.barros'])
+        ->and($replies[3]['kind'])->toBe('text');
+});
+
+it('does not emit a replies event when the model offers nothing usable', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response(sse([
+        ['type' => 'content_block_start', 'index' => 0, 'content_block' => ['type' => 'tool_use', 'name' => 'suggest_replies']],
+        ['type' => 'content_block_delta', 'index' => 0, 'delta' => ['type' => 'input_json_delta', 'partial_json' => '{"replies":"nope"}']],
+        ['type' => 'content_block_stop', 'index' => 0],
+    ]), 200)]);
+
+    expect($this->post('/api/chat', chatPayload())->streamedContent())->not->toContain('event: replies')->toContain('event: done');
 });

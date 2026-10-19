@@ -288,3 +288,18 @@ it('attaches the images of the last message when editing an existing issue', fun
     call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7'])->assertOk()
         ->assertJsonPath('message.meta.attachments', ['print.png'])->assertJsonPath('message.meta.changes', []);
 });
+
+it('stores sanitized quick replies in the assistant message and returns them when the conversation is reopened', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+
+    turn($this->a, $id, ['text' => 'Em que ambiente acontece?', 'replies' => [
+        ['label' => 'Produção'], ['label' => 'Staging', 'kind' => 'bogus'], ['label' => 'x', 'kind' => 'person', 'value' => 'fabio'], ['label' => 'A'], ['label' => 'B'],
+    ]])->assertOk()->assertJsonCount(4, 'messages.1.meta.replies')->assertJsonPath('messages.1.meta.replies.1.kind', 'text');
+
+    $shown = call_as($this->a, 'GET', "/api/conversations/$id")->assertOk();
+    expect(array_column($shown->json('messages.1.meta.replies'), 'label'))->toBe(['Produção', 'Staging', 'x', 'A']);
+
+    // a normal answer carries no replies at all
+    $id2 = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id2, ['text' => 'ok'])->assertOk()->assertJsonMissingPath('messages.1.meta.replies');
+});

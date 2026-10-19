@@ -64,6 +64,7 @@ return [
     ],
 
     'chat' => [
+        'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
         'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
@@ -83,6 +84,10 @@ return [
         'state' => ['Submitted' => 'Submetido', 'Open' => 'Aberto', 'In Progress' => 'Em curso', 'Reopened' => 'Reaberto', 'Duplicate' => 'Duplicado', 'Testing' => 'Em teste', 'Completed' => 'Concluído', 'Stand-By' => 'Em espera', 'Closed' => 'Fechado'],
     ],
 
+    'similar' => [
+        'title' => 'Já existem issues semelhantes',
+        'hint' => 'Confirma estas antes de criar uma duplicada.',
+    ],
     'card' => [
         'section_properties' => 'Propriedades', 'required_progress' => ':done de :total obrigatórios',
         'attachments_title' => 'Anexos para o Issue', 'attachments_count' => ':n por enviar', 'attachments_hint' => 'Os anexos marcados ficam no Issue do YouTrack quando o criares ou guardares.', 'attachment_sent' => 'Enviado para :key',

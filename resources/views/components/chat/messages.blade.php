@@ -24,6 +24,9 @@
                         <template x-if="m.id === s.lastCardId && s.draft && (m.meta?.card || s.draft.status === 'error')">
                             <x-issue.card />
                         </template>
+                        <template x-if="m.id === s.messages.at(-1)?.id && s.quickReplies.length">
+                            <x-chat.quick-replies />
+                        </template>
                         <template x-if="m.meta?.card && m.id !== s.lastCardId">
                             <p class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-xs text-muted">
                                 <x-ui.icon name="file" class="size-3.5" />

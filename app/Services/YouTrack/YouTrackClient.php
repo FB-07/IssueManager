@@ -181,6 +181,32 @@ class YouTrackClient
         });
     }
 
+    private const STOPWORDS = ['the', 'and', 'for', 'with', 'that', 'this', 'from', 'not', 'are', 'was', 'can', 'une', 'uma', 'para', 'com', 'que', 'por', 'dos', 'das', 'nos', 'nas', 'não', 'nao', 'mais', 'como', 'ser', 'erro', 'issue'];
+
+    /**
+     * Open-ended look-alikes for a draft title, from its keywords, in the same project.
+     *
+     * @return list<array<string,mixed>>
+     */
+    public function similar(string $project, string $summary, int $limit = 5): array
+    {
+        $words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($this->stripPrefix($summary)), -1, PREG_SPLIT_NO_EMPTY);
+        $keywords = array_slice(array_values(array_unique(array_filter($words, fn ($w) => mb_strlen($w) >= 3 && ! in_array($w, self::STOPWORDS, true)))), 0, 6);
+        if (! $keywords) {
+            return [];
+        }
+        $query = $this->buildQuery(['project' => $project, 'q' => implode(' ', $keywords)]);
+
+        return Cache::remember($this->cacheKey('similar.'.md5($query.$limit)), 60, fn () => $this->search($query, 1, $limit, false)['issues']);
+    }
+
+    private function stripPrefix(string $summary): string
+    {
+        $prefix = config('services.youtrack.title_prefix');
+
+        return $prefix && str_starts_with($summary, $prefix) ? substr($summary, strlen($prefix)) : $summary;
+    }
+
     public function getIssue(string $id): array
     {
         return $this->normalize($this->get("/api/issues/$id", ['fields' => self::ISSUE_FIELDS]));

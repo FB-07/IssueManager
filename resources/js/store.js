@@ -7,6 +7,8 @@ const ALLOWED_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'l
 const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
 
+let similarTimer;
+
 export function createStore(boot) {
     let saveTimer = null;
     let uid = 0;
@@ -44,6 +46,8 @@ export function createStore(boot) {
         activeId: null,
         messages: [],
         draft: null,
+        similarIssues: [],
+        similarKey: null,
         loadingConversation: false,
         processing: false,
         queue: [],
@@ -219,6 +223,7 @@ export function createStore(boot) {
                 if (push) history.pushState({}, '', `/c/${id}`);
                 if (this.draft?.project) this.loadMeta(this.draft.project);
                 this.loadProjects();
+                this.ensureCatalog();
                 setTimeout(() => this.scrollBottom(true), 30);
             } catch (e) {
                 this.notify(e.status === 403 || e.status === 404 ? this.t('errors.conversation_missing') : e.message, 'error');
@@ -352,6 +357,38 @@ export function createStore(boot) {
 
             return this.catalog;
         },
+        // ---- quick replies (clickable answers under the last assistant message) ----
+        get quickReplies() {
+            const last = this.messages.at(-1);
+            if (this.processing || last?.role !== 'assistant' || !last.meta?.replies?.length) return [];
+
+            return last.meta.replies.map((r) => this.resolveReply(r));
+        },
+        /** People and projects get their avatar/icon from the catalogue; unknown values stay plain text buttons. */
+        resolveReply(r) {
+            let option = null;
+            if (r.kind === 'person') {
+                const people = Object.values(this.catalog?.byProject ?? {}).flatMap((m) => m.assignees ?? []);
+                const a = people.find((x) => x.value === r.value);
+                if (a) option = this.personOption(a);
+            } else if (r.kind === 'project') {
+                const p = (this.projects ?? []).find((x) => x.key === r.value);
+                if (p) option = this.projectOption(p);
+            }
+
+            return { ...r, option };
+        },
+        pickReply(r) {
+            if (this.processing) return;
+            if (r.kind === 'action' && r.value === 'choose_assignee') {
+                this.cardTab = 'edit';
+                this.focusField('assignee');
+                setTimeout(() => document.getElementById('field-assignee')?.click(), 350);
+
+                return;
+            }
+            this.send(r.text || r.label);
+        },
         /** Dropdown option with the project icon (initials underneath while it loads or if it is missing). */
         projectOption(p) {
             return { value: p.key, label: `${p.key} · ${p.name}`, image: p.icon ?? null, shape: 'square', fallback: String(p.key).slice(0, 2).toUpperCase() };
@@ -427,7 +464,7 @@ export function createStore(boot) {
 
                 live = { id: `tmp-${++uid}`, role: 'assistant', kind: 'text', body: '', meta: {}, attachments: [] };
                 let text = '';
-                const { patch: draftPatch, created, updated } = await streamChat(
+                const { patch: draftPatch, created, updated, replies: modelReplies } = await streamChat(
                     {
                         payload: {
                             messages: turns,
@@ -458,6 +495,7 @@ export function createStore(boot) {
                     text = patch.message;
                     delete patch.message;
                 }
+                if (!text.trim() && modelReplies?.length) text = this.t('chat.pick_one');
                 if (!text.trim() && updated?.message) text = updated.message;
                 if (!text.trim() && updated) text = this.t('chat.updating_issue');
                 if (!text.trim() && patch) text = this.t(direct ? 'chat.creating_issue' : 'chat.draft_updated');
@@ -472,11 +510,20 @@ export function createStore(boot) {
                     askedAssignee = true;
                 } else if (named && text.includes('?') && !hasAssignee) askedAssignee = true;
 
+                // clickable answers: the model's, or (always, even if it forgot) the two obvious ones after the assignee question
+                let replies = modelReplies ?? [];
+                if (askedAssignee && !replies.length) {
+                    replies = [
+                        { label: this.t('chat.no_assignee'), text: this.t('chat.no_assignee_text'), kind: 'text', value: null },
+                        { label: this.t('chat.choose_assignee'), text: '', kind: 'action', value: 'choose_assignee' },
+                    ];
+                }
+
                 if (!text.trim()) throw new Error(this.t('errors.chat_failed'));
 
                 const fd = new FormData();
                 fd.append('body', body);
-                fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, asked_assignee: askedAssignee }));
+                fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, asked_assignee: askedAssignee, replies }));
                 files.forEach((f) => fd.append('files[]', f.file));
                 const res = await api('POST', `/api/conversations/${this.activeId}/turn`, fd);
 
@@ -707,6 +754,28 @@ export function createStore(boot) {
         },
         get valid() {
             return this.draft && this.missing.length === 0;
+        },
+        // ---- similar issues (duplicate warning) --------------------------
+        watchSimilar(summary, project) {
+            clearTimeout(similarTimer);
+            const key = `${project}|${summary}`;
+            if (!this.activeId || !this.draft || this.draft.issue_key || !project || !String(summary ?? '').trim()) {
+                this.similarKey = null;
+                this.similarIssues = [];
+                return;
+            }
+            if (key === this.similarKey) return;
+            const id = this.activeId;
+            similarTimer = setTimeout(async () => {
+                try {
+                    const res = await api('GET', `/api/conversations/${id}/draft/similar?` + new URLSearchParams({ summary, project }));
+                    if (id !== this.activeId || !this.draft) return;
+                    this.similarKey = key;
+                    this.similarIssues = res.issues ?? [];
+                } catch (_) {
+                    this.similarIssues = [];
+                }
+            }, 800);
         },
         setField(field, value) {
             if (!this.draft) return;

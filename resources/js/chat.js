@@ -30,6 +30,7 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
     let patch = null;
     let created = null;
     let updated = null;
+    let replies = null;
 
     const handle = (raw) => {
         let event = 'message';
@@ -44,6 +45,7 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
         else if (event === 'draft') patch = json.patch;
         else if (event === 'create') created = json.issue;
         else if (event === 'update') updated = json.issue;
+        else if (event === 'replies') replies = json.replies;
         else if (event === 'error') throw new ApiError(502, { message: json.message });
     };
 
@@ -58,5 +60,5 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
         }
     }
 
-    return { patch, created, updated };
+    return { patch, created, updated, replies };
 }

@@ -82,6 +82,26 @@ class DraftController extends Controller
         return Presenter::draft($draft);
     }
 
+    /** Look-alike issues for the draft title; a warning only, so any failure just yields an empty list. */
+    public function similar(Request $request, int $conversation, YouTrackClient $yt)
+    {
+        $draft = $this->draft($request, $conversation);
+        $q = $request->validate(['summary' => ['nullable', 'string', 'max:255'], 'project' => ['nullable', 'string', 'max:50']]);
+        $project = $q['project'] ?? $draft->project; // the live card text may not be saved yet
+        $summary = $q['summary'] ?? $draft->summary;
+        if (filled($draft->issue_key) || blank($project) || blank($summary) || ! YouTrackClient::configured()) {
+            return ['issues' => []];
+        }
+
+        try {
+            $issues = $yt->similar($project, $summary);
+        } catch (TrackerException) {
+            return ['issues' => []];
+        }
+
+        return ['issues' => array_map(fn ($i) => ['id' => $i['id'], 'summary' => $i['summary'], 'state' => $i['state'], 'url' => $i['url']], $issues)];
+    }
+
     /** Explicit, user-confirmed creation in YouTrack (or update of the issue created from this draft). */
     public function create(Request $request, int $conversation, YouTrackClient $yt, AttachmentUploader $uploader)
     {

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Services\DraftPatch;
+use App\Services\QuickReplies;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
 use Illuminate\Http\Request;
@@ -89,6 +90,7 @@ class TurnController extends Controller
                     'direct' => $direct ?: null,
                     'revision' => $patch && ! $direct ? $draft->revision : null,
                     'asked_assignee' => ! empty($reply['asked_assignee']) ? true : null,
+                    'replies' => QuickReplies::sanitize($reply['replies'] ?? [], allowActions: true) ?: null,
                 ]),
             ]);
 

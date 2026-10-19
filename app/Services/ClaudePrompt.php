@@ -26,6 +26,11 @@ TXT;
 Editing existing issues: when the user wants to change an existing YouTrack issue (given by key like DEV-12, by its title or description, as "the issue you just created", or as a correction such as "afinal não era X mas Y, altera o issue"), call `update_issue` with `issue_id` and ONLY the fields that change, and put your short message in its required `message` field. If the issue is only identified by words, call `find_issues` first (use `get_issue` when you need its current description or fields to edit them). If several issues plausibly match, ask which one in plain text; if none matches, say so. When the correction changes the description, send the COMPLETE new Markdown description: start from the current one, apply the user's correction, keep everything else (including exact values such as "15px"). Never invent an issue key. Values for type, priority, assignee, subsystem, state and custom fields must exist in the catalog of the issue's project (use that project's lists; the project key is the part of the key before the last dash). Do not claim an issue was changed unless you called `update_issue`. Attachments: images and files the user sends in this conversation are attached to the YouTrack issue by the app itself (the user ticks which ones on the card, or all of them when the app creates/updates the issue right away). When the user asks to attach an image/file to an existing issue, call `update_issue` with just `issue_id` and `message` (no other field is needed). Never claim a file was attached unless you called `update_issue`, create_issue or the draft tool in this turn.
 TXT;
 
+    /** Clickable answers under a question (both modes). */
+    private const QUICK_REPLY_RULES = <<<'TXT'
+Quick replies: whenever you ask the user a clarifying question, or ask who to assign / which project to use, ALSO call `suggest_replies` with 2-4 short, realistic answers the user could click (they send it as their next message). Write the question itself as normal text (or in the tool's `message` field) as usual; the buttons only complement it. For people use `kind: "person"` and `value` = the person's login from the catalog; for projects `kind: "project"` and `value` = the project key; otherwise `kind: "text"`. Never add an "Other" option (the user can always type). Do NOT call it when you are not asking anything, and never offer more than 4.
+TXT;
+
     /** Names of the tools the server runs itself (the model continues after their result). */
     public const SERVER_TOOLS = ['find_issues', 'get_issue'];
 
@@ -44,6 +49,7 @@ TXT;
             ."Never claim you cannot create issues in YouTrack.\n\n"
             ."Rules for the tool fields:\n".self::FIELD_RULES
             ."\n\n".self::EDIT_RULES
+            ."\n\n".self::QUICK_REPLY_RULES
             ."\n\nValid catalog values (use exactly these strings). `projects` lists the projects; `byProject[KEY]` has the valid types, priorities, subsystems, states, sprints, assignees (value = login) and custom fields of that project. After choosing the project, use ONLY values from that project's lists (an empty list means: leave that field out):\n{$catalogJson}"
             .self::linkedIssue($draft);
     }
@@ -64,6 +70,7 @@ TXT;
         $catalogJson = json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $languageRule = self::LANGUAGE_RULE;
         $editRules = self::EDIT_RULES;
+        $quickRules = self::QUICK_REPLY_RULES;
         $fieldRules = self::FIELD_RULES."\n";
         $assigneeRule = <<<'RULE'
   - ASSIGNEE QUESTION: whenever you present or update the draft and the current draft has no assignee (and the user did not just decline), the `message` MUST end with a short question asking whether they want to assign someone, naming the people available in the catalog (use their labels). If the user answers with a name, call the tool again with `assignee` set to that person's login; if they decline ("no", "nobody", "leave it"), do not ask again.
@@ -84,6 +91,9 @@ Behaviour:
 {$fieldRules}{$assigneeRule}- You cannot create the issue yourself and must never say you did: the user reviews the draft card and confirms creation with a button. Do not describe the contents of attachments you cannot see.
 
 {$editRules}
+
+{$quickRules}
+
 - The issue created from THIS conversation's draft (if the draft below has an `issue_key`) is edited through `update_issue_draft` (the user confirms saving with the button): when the user corrects it, call `update_issue_draft` with the changed fields. For any OTHER existing issue use `update_issue`.
 
 Valid catalog values (use exactly these strings). `projects` lists the projects; `byProject[KEY]` has the valid types, priorities, subsystems, states, sprints, assignees (value = login) and custom fields of that project. After choosing the project, use ONLY values from that project's lists (an empty list means: leave that field out):
@@ -185,6 +195,38 @@ PROMPT;
                 'type' => 'object',
                 'properties' => ['issue_id' => ['type' => 'string', 'description' => 'Issue key, e.g. DEV-12']],
                 'required' => ['issue_id'],
+            ],
+        ];
+    }
+
+    /** Clickable answers under a question; the app shows them as buttons and sends the chosen text as the user's message. */
+    public static function suggestRepliesTool(): array
+    {
+        $str = ['type' => 'string'];
+
+        return [
+            'name' => 'suggest_replies',
+            'description' => 'Offer 2-4 clickable answers to the question you are asking. Always write the question itself as text first.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'replies' => [
+                        'type' => 'array',
+                        'minItems' => 2,
+                        'maxItems' => 4,
+                        'items' => [
+                            'type' => 'object',
+                            'properties' => [
+                                'label' => $str + ['description' => 'Button text, max 40 characters, in the user\'s language.'],
+                                'text' => $str + ['description' => 'Message sent when clicked (defaults to the label). Write it as the user would, e.g. "Atribui ao Fábio Barros".'],
+                                'kind' => ['type' => 'string', 'enum' => ['text', 'person', 'project']],
+                                'value' => $str + ['description' => 'Person login or project key from the catalog (for kind person/project).'],
+                            ],
+                            'required' => ['label'],
+                        ],
+                    ],
+                ],
+                'required' => ['replies'],
             ],
         ];
     }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\TrackerException;
 use App\Services\ClaudePrompt;
+use App\Services\QuickReplies;
 use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -14,7 +15,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Stateless proxy to the Anthropic Messages API (streaming). The API key never reaches the browser.
- * Events (SSE): text {t}, draft {patch}, create {issue}, update {issue}, error {message}, done {}.
+ * Events (SSE): text {t}, draft {patch}, create {issue}, update {issue}, replies {replies}, error {message}, done {}.
  */
 class ChatController extends Controller
 {
@@ -60,6 +61,7 @@ class ChatController extends Controller
         $yt = YouTrackClient::configured() ? app(YouTrackClient::class) : null;
         $body['tools'] = array_values(array_filter([
             $draftOn ? ClaudePrompt::draftTool() : ClaudePrompt::createTool(),
+            ClaudePrompt::suggestRepliesTool(),
             $yt ? ClaudePrompt::updateIssueTool() : null,
             $yt ? ClaudePrompt::findIssuesTool() : null,
             $yt ? ClaudePrompt::getIssueTool() : null,
@@ -230,6 +232,12 @@ class ChatController extends Controller
                     $input = json_decode($block['_json'] ?: '{}', true);
                     $block['input'] = is_array($input) && $input ? $input : (object) [];
                     unset($block['_json']);
+
+                    if ($block['name'] === 'suggest_replies' && is_array($input)) {
+                        if ($replies = QuickReplies::sanitize($input['replies'] ?? [])) {
+                            $emit('replies', ['replies' => $replies]);
+                        }
+                    }
 
                     $event = ['update_issue_draft' => 'draft', 'create_issue' => 'create', 'update_issue' => 'update'][$block['name']] ?? null;
                     if ($event && is_array($input)) {
