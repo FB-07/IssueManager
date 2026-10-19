@@ -71,12 +71,12 @@
             <div class="grid gap-4 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-2">
                 <x-issue.field field="project" required>
                     <x-ui.select id="field-project" value="s.draft.project" select="s.setField('project', $value || null)"
-                        options="(s.projects ?? []).map((p) => ({ value: p.key, label: p.key + ' · ' + p.name }))" invalid="s.missing.includes('project')" on-open="s.loadProjects()" />
+                        options="(s.projects ?? []).map((p) => s.projectOption(p))" invalid="s.missing.includes('project')" on-open="s.loadProjects()" />
                 </x-issue.field>
 
                 <x-issue.field field="assignee">
                     <x-ui.select id="field-assignee" value="s.draft.assignee" select="s.setField('assignee', $value || null)"
-                        options="s.meta.assignees.map((a) => ({ value: a.value, label: a.label }))" empty-label="s.t('card.unassigned')" />
+                        options="s.meta.assignees.map((a) => s.personOption(a))" empty-label="s.t('card.unassigned')" />
                 </x-issue.field>
 
                 <x-issue.field field="priority" required>

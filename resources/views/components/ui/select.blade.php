@@ -34,7 +34,10 @@
             role="combobox" aria-haspopup="listbox" x-bind:aria-expanded="open" x-bind:aria-controls="uid + '-list'"
             @if ($label) x-bind:aria-label="{!! $label !!}" @endif
             x-bind:disabled="disabled" @click="toggle()" @keydown="onKey($event)">
-        <span class="truncate" x-bind:class="isEmpty && 'text-faint'" x-text="label"></span>
+        <span class="flex min-w-0 items-center gap-2">
+            <x-ui.avatar of="isEmpty ? null : current" />
+            <span class="truncate" x-bind:class="isEmpty && 'text-faint'" x-text="label"></span>
+        </span>
         <span class="size-4 shrink-0 text-muted transition-transform duration-150" x-bind:class="open && 'rotate-180'"><x-ui.icon name="chevron-down" class="size-full" /></span>
     </button>
 
@@ -53,6 +56,7 @@
                 <li role="option" x-bind:id="uid + '-' + i" x-bind:aria-selected="isSelected(o)" @mousemove="active = i" @click="pick(o)"
                     class="flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors"
                     x-bind:class="[i === active && 'bg-surface-2', o.empty && 'text-muted']">
+                    <x-ui.avatar of="o" />
                     <span class="min-w-0 flex-1 truncate" x-bind:class="isSelected(o) && 'font-medium'" x-text="o.label"></span>
                     <span class="shrink-0 text-xs text-faint" x-show="o.hint" x-text="o.hint"></span>
                     <span class="size-4 shrink-0 text-accent" x-show="isSelected(o)"><x-ui.icon name="check" class="size-full" /></span>

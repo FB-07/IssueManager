@@ -49,6 +49,7 @@ return [
     'dropdown' => ['search' => 'Pesquisar…', 'none' => 'Sem resultados'],
 
     'composer' => [
+        'queued' => 'Em fila',
         'voice_start' => 'Ditar por voz', 'voice_stop' => 'Parar de ouvir', 'voice_listening' => 'A ouvir… diz o teu pedido',
         'draft_toggle' => 'Rascunho de Issue',
         'draft_toggle_on' => 'Rascunho de Issue ligado: o Claude prepara um Issue quando houver informação suficiente.',

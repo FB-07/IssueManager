@@ -20,7 +20,7 @@ class YouTrackController extends Controller
                 $byProject[$p['key']] = $this->yt->meta($p['key']);
             }
 
-            return ['projects' => array_map(fn ($p) => ['key' => $p['key'], 'name' => $p['name']], $projects), 'byProject' => (object) $byProject];
+            return ['projects' => array_map(fn ($p) => ['key' => $p['key'], 'name' => $p['name'], 'icon' => $p['icon'] ?? null], $projects), 'byProject' => (object) $byProject];
         });
     }
 
@@ -32,6 +32,29 @@ class YouTrackController extends Controller
     public function meta(string $project)
     {
         return $this->run(fn () => $this->yt->meta($project));
+    }
+
+    /** Avatar / project icon proxy: sent with the user's own token, locked to a few YouTrack paths. */
+    public function image(Request $request)
+    {
+        $path = (string) $request->validate(['path' => ['required', 'string', 'max:400']])['path'];
+
+        if (! YouTrackClient::configured()) {
+            return response()->json(['message' => __('ui.errors.tracker_not_configured')], 503);
+        }
+        try {
+            $img = $this->yt->fetchImage($path);
+        } catch (TrackerException $e) {
+            return $e->response();
+        }
+
+        return response($img['body'], 200, [
+            'Content-Type' => $img['type'],
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+            // an SVG opened directly can never run script
+            'Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        ]);
     }
 
     public function issues(Request $request)

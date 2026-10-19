@@ -40,6 +40,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/conversations/{conversation}/issues/update', IssueEditController::class)->whereNumber('conversation');
         Route::post('/conversations/{conversation}/draft/create', [DraftController::class, 'create'])->whereNumber('conversation');
 
+        Route::get('/youtrack/image', [YouTrackController::class, 'image'])->middleware('throttle:600,1');
+
         Route::prefix('youtrack')->middleware('throttle:60,1')->group(function () {
             Route::get('/catalog', [YouTrackController::class, 'catalog']);
             Route::get('/projects', [YouTrackController::class, 'projects']);

@@ -82,10 +82,10 @@ class YouTrackClient
     public function projects(): array
     {
         return Cache::remember($this->cacheKey('projects'), 120, function () {
-            $rows = $this->get('/api/admin/projects', ['fields' => 'id,shortName,name,archived', '$top' => 200]);
+            $rows = $this->get('/api/admin/projects', ['fields' => 'id,shortName,name,archived,iconUrl', '$top' => 200]);
 
             return collect($rows)->reject(fn ($p) => $p['archived'] ?? false)
-                ->map(fn ($p) => ['key' => $p['shortName'], 'name' => $p['name'], 'id' => $p['id']])->values()->all();
+                ->map(fn ($p) => ['key' => $p['shortName'], 'name' => $p['name'], 'id' => $p['id'], 'icon' => $this->imageUrl($p['iconUrl'] ?? null)])->values()->all();
         });
     }
 
@@ -265,6 +265,42 @@ class YouTrackClient
         }
     }
 
+    /** Avatars and project icons are only served for these YouTrack paths (never an arbitrary URL). */
+    private const IMAGE_PATH = '#^/(hub/api/rest/avatar/[A-Za-z0-9-]+|api/entityIcons/[A-Za-z0-9_.-]+)(\?[A-Za-z0-9=&%._+\-]*)?$#';
+
+    /** URL of the app's own image proxy for a YouTrack avatar/icon path (the browser has no YouTrack token). */
+    public function imageUrl(?string $path): ?string
+    {
+        return $path && preg_match(self::IMAGE_PATH, $path) ? '/api/youtrack/image?path='.rawurlencode($path) : null;
+    }
+
+    /**
+     * Fetches an avatar/icon with the current user's token.
+     *
+     * @return array{body:string,type:string}
+     *
+     * @throws TrackerException
+     */
+    public function fetchImage(string $path): array
+    {
+        if (! preg_match(self::IMAGE_PATH, $path)) {
+            throw new TrackerException(__('ui.errors.issue_not_found'), 404);
+        }
+
+        try {
+            $r = Http::withToken($this->token())->timeout(15)->baseUrl(config('services.youtrack.url'))->get($path);
+        } catch (ConnectionException) {
+            throw new TrackerException(__('ui.errors.tracker_unreachable'));
+        }
+
+        $type = strtolower(trim(explode(';', (string) $r->header('Content-Type'))[0]));
+        if ($r->failed() || ! str_starts_with($type, 'image/') || strlen($r->body()) > 1_000_000) {
+            throw new TrackerException(__('ui.errors.issue_not_found'), 404);
+        }
+
+        return ['body' => $r->body(), 'type' => $type];
+    }
+
     public function withPrefix(string $summary): string
     {
         $prefix = (string) config('services.youtrack.title_prefix');
@@ -328,12 +364,12 @@ class YouTrackClient
     private function assignees(string $projectId): array
     {
         try {
-            $rows = $this->get("/api/admin/projects/$projectId/team/users", ['fields' => 'login,fullName', '$top' => 200]);
+            $rows = $this->get("/api/admin/projects/$projectId/team/users", ['fields' => 'login,fullName,avatarUrl', '$top' => 200]);
         } catch (TrackerException) {
             return [];
         }
 
-        return collect($rows)->map(fn ($u) => ['value' => $u['login'], 'label' => $u['fullName'] ?? $u['login']])->values()->all();
+        return collect($rows)->map(fn ($u) => ['value' => $u['login'], 'label' => $u['fullName'] ?? $u['login'], 'avatar' => $this->imageUrl($u['avatarUrl'] ?? null)])->values()->all();
     }
 
     /** @return list<array{name:string,id:string,agile:string}> */

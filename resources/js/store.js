@@ -46,6 +46,7 @@ export function createStore(boot) {
         draft: null,
         loadingConversation: false,
         processing: false,
+        queue: [],
         streaming: false,
         draftEnabled: true,
         catalog: null,
@@ -321,7 +322,7 @@ export function createStore(boot) {
         },
         get canSend() {
             const c = this.composer;
-            return !this.processing && (c.text.trim() !== '' || c.files.length > 0);
+            return c.text.trim() !== '' || c.files.length > 0;
         },
         /** Conversation so far as plain text turns for the chat API (attachments of past turns are only named). */
         historyForApi() {
@@ -351,21 +352,63 @@ export function createStore(boot) {
 
             return this.catalog;
         },
+        /** Dropdown option with the project icon (initials underneath while it loads or if it is missing). */
+        projectOption(p) {
+            return { value: p.key, label: `${p.key} · ${p.name}`, image: p.icon ?? null, shape: 'square', fallback: String(p.key).slice(0, 2).toUpperCase() };
+        },
+        /** Dropdown option with the person's YouTrack avatar (round, initials as fallback). */
+        personOption(a) {
+            const initials = String(a.label ?? a.value).split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+            return { value: a.value, label: a.label, image: a.avatar ?? null, shape: 'round', fallback: initials };
+        },
+        /** The catalogue Claude receives has no image URLs (they only cost tokens). */
+        catalogForApi(c) {
+            if (!c?.projects) return c;
+
+            return {
+                projects: c.projects.map(({ key, name }) => ({ key, name })),
+                byProject: Object.fromEntries(Object.entries(c.byProject ?? {}).map(([k, m]) => [k, { ...m, assignees: (m.assignees ?? []).map(({ value, label }) => ({ value, label })) }])),
+            };
+        },
         peopleFor(catalog, project) {
             return catalog?.byProject?.[project]?.assignees ?? [];
         },
-        async send(textOverride = null) {
+        async send(textOverride = null, filesOverride = null) {
             const fromComposer = textOverride === null;
-            if (this.processing) return;
             const body = (fromComposer ? this.composer.text : textOverride).trim();
-            const files = fromComposer ? [...this.composer.files] : [];
+            const files = fromComposer ? [...this.composer.files] : [...(filesOverride ?? [])];
             if (!body && !files.length) return;
+
+            // The previous answer is still being written: keep this message in line (shown above the box)
+            // instead of silently leaving it in the text area.
+            if (this.processing) {
+                this.queue.push({ body, files });
+                if (fromComposer) this.clearComposer(false);
+
+                return;
+            }
 
             this.stopVoice();
             this.processing = true;
             this.streaming = false;
-            let temp = null;
             let live = null;
+
+            // What Claude has seen so far (before this message), then show the message and empty the box right away:
+            // nothing below waits on the network before the user sees the message leave the text area.
+            const turns = this.historyForApi();
+            const temp = {
+                id: `tmp-${++uid}`,
+                role: 'user',
+                kind: 'text',
+                body,
+                meta: {},
+                attachments: files.map((f) => ({ id: f.id, kind: f.kind, name: f.name, size: f.size, url: f.preview })),
+            };
+            this.messages.push(temp);
+            if (fromComposer) this.clearComposer(false);
+            setTimeout(() => this.scrollBottom(), 30);
+
             try {
                 if (!this.activeId) {
                     const c = await api('POST', '/api/conversations');
@@ -375,27 +418,12 @@ export function createStore(boot) {
                     this.loadProjects();
                 }
 
-                const turns = this.historyForApi();
                 // "no / nobody" after the app asked about an assignee: stop asking in this conversation
                 const lastAssistant = [...this.messages].reverse().find((m) => m.role === 'assistant');
                 if (lastAssistant?.meta?.asked_assignee && /^\s*(n[ãa]o|ningu[ée]m|no|nobody|none|deixa|leave|sem )/i.test(body)) this.assigneeDeclined.add(this.activeId);
                 const sentBody = body || (files.length ? this.t('chat.attachments_only') : '');
                 turns.push({ role: 'user', content: sentBody });
-                const catalog = await this.ensureCatalog();
-
-                temp = {
-                    id: `tmp-${++uid}`,
-                    role: 'user',
-                    kind: 'text',
-                    body,
-                    meta: {},
-                    attachments: [
-                        ...files.map((f) => ({ id: f.id, kind: f.kind, name: f.name, size: f.size, url: f.preview })),
-                    ],
-                };
-                this.messages.push(temp);
-                if (fromComposer) this.clearComposer(false);
-                setTimeout(() => this.scrollBottom(), 30);
+                const catalog = this.catalogForApi(await this.ensureCatalog());
 
                 live = { id: `tmp-${++uid}`, role: 'assistant', kind: 'text', body: '', meta: {}, attachments: [] };
                 let text = '';
@@ -468,13 +496,16 @@ export function createStore(boot) {
             } catch (e) {
                 if (temp) this.messages = this.messages.filter((m) => m.id !== temp.id && m.id !== live?.id);
                 if (temp && fromComposer) {
-                    this.composer.text = body;
-                    this.composer.files = files;
+                    // give the message back without overwriting whatever was typed in the meantime
+                    this.composer.text = [body, this.composer.text].filter(Boolean).join(this.composer.text ? '\n' : '');
+                    this.composer.files = [...files, ...this.composer.files];
                 }
                 this.notify(e.message || this.t('errors.generic'), 'error');
             } finally {
                 this.processing = false;
                 this.streaming = false;
+                const next = this.queue.shift();
+                if (next) setTimeout(() => this.send(next.body, next.files), 0);
             }
         },
         /** Draft mode off + explicit request: the issue is created right away and shown as result + preview. */
@@ -776,14 +807,14 @@ export function createStore(boot) {
             const metas = this.issueFilters.project ? [c.byProject?.[this.issueFilters.project]].filter(Boolean) : Object.values(c.byProject ?? {});
             const uniq = (key) => [...new Set(metas.flatMap((m) => m[key] ?? []))];
             const people = new Map();
-            metas.flatMap((m) => m.assignees ?? []).forEach((a) => people.set(a.value, a.label));
+            metas.flatMap((m) => m.assignees ?? []).forEach((a) => people.set(a.value, { label: a.label, avatar: a.avatar ?? null }));
 
             return {
                 projects: c.projects ?? [],
                 types: uniq('types'),
                 priorities: uniq('priorities'),
                 states: uniq('states'),
-                assignees: [...people].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label)),
+                assignees: [...people].map(([value, a]) => ({ value, label: a.label, avatar: a.avatar })).sort((x, y) => x.label.localeCompare(y.label)),
             };
         },
         get issueFiltersActive() {

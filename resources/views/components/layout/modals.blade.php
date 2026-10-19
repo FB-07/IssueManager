@@ -73,7 +73,7 @@
         {{-- filters --}}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.project" select="s.issueFilters.project = $value; s.onIssueProjectChange()"
-                options="s.issueFilterOptions.projects.map((p) => ({ value: p.key, label: p.key + ' · ' + p.name }))" empty-label="s.t('issues.all_projects')" label="s.t('fields.project')" />
+                options="s.issueFilterOptions.projects.map((p) => s.projectOption(p))" empty-label="s.t('issues.all_projects')" label="s.t('fields.project')" />
             <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.type" select="s.issueFilters.type = $value; s.applyIssueFilters()"
                 options="s.issueFilterOptions.types.map((o) => ({ value: o, label: s.lbl('type', o) }))" empty-label="s.t('issues.all_types')" label="s.t('fields.type')" />
             <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.priority" select="s.issueFilters.priority = $value; s.applyIssueFilters()"
@@ -81,7 +81,7 @@
             <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.state" select="s.issueFilters.state = $value; s.applyIssueFilters()"
                 options="s.issueFilterOptions.states.map((o) => ({ value: o, label: s.lbl('state', o) }))" empty-label="s.t('issues.all_states')" label="s.t('issues.state')" />
             <x-ui.select trigger="py-1.5" searchable="true" value="s.issueFilters.assignee" select="s.issueFilters.assignee = $value; s.applyIssueFilters()"
-                options="s.issueFilterOptions.assignees" empty-label="s.t('issues.all_assignees')" label="s.t('fields.assignee')" />
+                options="s.issueFilterOptions.assignees.map((a) => s.personOption(a))" empty-label="s.t('issues.all_assignees')" label="s.t('fields.assignee')" />
             <button type="button" class="btn-ghost btn py-1.5" x-show="s.issueFiltersActive" @click="s.resetIssueFilters()"><x-ui.icon name="x" /><span x-text="s.t('issues.clear')"></span></button>
         </div>
 

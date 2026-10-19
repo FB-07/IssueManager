@@ -49,6 +49,7 @@ return [
     'dropdown' => ['search' => 'Search…', 'none' => 'No results'],
 
     'composer' => [
+        'queued' => 'Queued',
         'voice_start' => 'Dictate', 'voice_stop' => 'Stop listening', 'voice_listening' => 'Listening… say your request',
         'draft_toggle' => 'Issue draft',
         'draft_toggle_on' => 'Issue draft on: Claude prepares an issue when there is enough information.',

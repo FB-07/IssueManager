@@ -76,3 +76,39 @@ it('lets the local dev-login user use the shared token (local environment only)'
     $this->actingAs($dev)->getJson('/api/youtrack/projects')->assertOk();
     Http::assertSent(fn ($r) => str_contains($r->url(), 'admin/projects') && $r->hasHeader('Authorization', 'Bearer shared-token'));
 });
+
+it('serves YouTrack avatars and project icons through a locked-down proxy using the user token', function () {
+    Http::fake([
+        'yt.test/hub/api/rest/avatar/*' => Http::response('<svg xmlns="http://www.w3.org/2000/svg"/>', 200, ['Content-Type' => 'image/svg+xml']),
+        'yt.test/api/entityIcons/*' => Http::response('not an image', 200, ['Content-Type' => 'text/html']),
+    ]);
+    $ana = yt_user('token-ana');
+
+    $this->actingAs($ana)->get('/api/youtrack/image?path='.rawurlencode('/hub/api/rest/avatar/f0f44556-2031-4db4-b570-ab0376048200?s=48'))
+        ->assertOk()->assertHeader('Content-Type', 'image/svg+xml')->assertHeader('X-Content-Type-Options', 'nosniff')
+        ->assertHeader('Content-Security-Policy');
+    Http::assertSent(fn ($r) => str_contains($r->url(), '/hub/api/rest/avatar/') && $r->hasHeader('Authorization', 'Bearer token-ana'));
+
+    // anything that is not an image is refused, and so is every path outside the two allowed prefixes
+    $this->actingAs($ana)->get('/api/youtrack/image?path='.rawurlencode('/api/entityIcons/0-3?sign=abc'))->assertNotFound();
+    foreach (['/api/admin/users', 'https://evil.test/x.png', '//evil.test/hub/api/rest/avatar/x', '/hub/api/rest/avatar/../../users/me', '/api/entityIcons/0-3/../../x'] as $bad) {
+        $this->actingAs($ana)->get('/api/youtrack/image?path='.rawurlencode($bad))->assertNotFound();
+    }
+    auth()->logout();
+    $this->getJson('/api/youtrack/image?path='.rawurlencode('/hub/api/rest/avatar/x'))->assertUnauthorized(); // guests get nothing
+});
+
+it('exposes project icons and avatars as proxy urls (never the raw YouTrack addresses)', function () {
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'WEB', 'name' => 'Website', 'iconUrl' => '/api/entityIcons/0-1?sign=abc&id=1']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([['login' => 'ana', 'fullName' => 'Ana', 'avatarUrl' => '/hub/api/rest/avatar/abc-123?s=48'], ['login' => 'bruno', 'fullName' => 'Bruno', 'avatarUrl' => 'https://evil.test/a.png']]),
+        'yt.test/api/agiles*' => Http::response([]),
+    ]);
+
+    $res = $this->actingAs(yt_user())->getJson('/api/youtrack/catalog')->assertOk();
+
+    expect($res->json('projects.0.icon'))->toBe('/api/youtrack/image?path='.rawurlencode('/api/entityIcons/0-1?sign=abc&id=1'))
+        ->and($res->json('byProject.WEB.assignees.0.avatar'))->toBe('/api/youtrack/image?path='.rawurlencode('/hub/api/rest/avatar/abc-123?s=48'))
+        ->and($res->json('byProject.WEB.assignees.1.avatar'))->toBeNull(); // foreign hosts never become image urls
+});

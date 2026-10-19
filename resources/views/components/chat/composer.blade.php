@@ -2,6 +2,18 @@
     <form class="mx-auto w-full max-w-3xl" @submit.prevent="s.send()">
         <div class="rounded-2xl border border-line bg-surface shadow-sm transition focus-within:border-line-strong focus-within:shadow-[var(--shadow)]">
 
+            {{-- messages waiting for the current answer to finish --}}
+            <div x-show="s.queue.length" x-cloak class="flex flex-col gap-1.5 px-3 pt-3">
+                <template x-for="(q, i) in s.queue" x-bind:key="i">
+                    <div class="flex items-center gap-2 rounded-xl border border-dashed border-line bg-surface-2/60 px-3 py-1.5 text-xs text-muted">
+                        <span class="size-3.5 shrink-0" x-html="s.icon('loader')"></span>
+                        <span class="shrink-0 font-medium" x-text="s.t('composer.queued')"></span>
+                        <span class="min-w-0 flex-1 truncate" x-text="q.body || q.files.map((f) => f.name).join(', ')"></span>
+                        <button type="button" class="btn-icon size-6" @click="s.queue.splice(i, 1)" x-bind:aria-label="s.t('common.cancel')"><x-ui.icon name="x" class="size-3" /></button>
+                    </div>
+                </template>
+            </div>
+
             {{-- attachments preview --}}
             <div x-show="s.composer.files.length" class="flex flex-wrap gap-2 px-3 pt-3">
                 <template x-for="f in s.composer.files" x-bind:key="f.id">
@@ -26,12 +38,6 @@
                        @change="s.addFiles($el.files); $el.value = ''">
                 <button type="button" class="btn-icon" @click="document.getElementById('file-input').click()" x-bind:aria-label="s.t('composer.attach')" x-bind:title="s.t('composer.attach')"><x-ui.icon name="paperclip" class="size-[18px]" /></button>
 
-                <button type="button" class="btn-icon relative" x-show="s.voice.supported" @click="s.toggleVoice()" x-bind:disabled="s.processing"
-                        x-bind:aria-pressed="s.voice.listening" x-bind:aria-label="s.voice.listening ? s.t('composer.voice_stop') : s.t('composer.voice_start')" x-bind:title="s.voice.listening ? s.t('composer.voice_stop') : s.t('composer.voice_start')"
-                        x-bind:class="s.voice.listening && 'bg-danger-soft text-danger'">
-                    <x-ui.icon name="mic" class="size-[18px]" />
-                    <span class="absolute right-1.5 top-1.5 size-2 animate-ping rounded-full bg-danger" x-show="s.voice.listening" aria-hidden="true"></span>
-                </button>
                 <button type="button" role="switch" x-bind:aria-checked="s.draftEnabled" @click="s.draftEnabled = !s.draftEnabled"
                         class="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition"
                         x-bind:class="s.draftEnabled ? 'border-accent/40 bg-accent-soft text-accent' : 'border-line text-muted hover:text-fg'"
@@ -45,9 +51,16 @@
 
                 <span class="ml-auto mr-2 hidden text-[11px] text-faint sm:inline" x-text="s.t('composer.hint')"></span>
 
+                <button type="button" class="btn-icon relative" x-show="s.voice.supported" @click="s.toggleVoice()" x-bind:disabled="s.processing"
+                        x-bind:aria-pressed="s.voice.listening" x-bind:aria-label="s.voice.listening ? s.t('composer.voice_stop') : s.t('composer.voice_start')" x-bind:title="s.voice.listening ? s.t('composer.voice_stop') : s.t('composer.voice_start')"
+                        x-bind:class="s.voice.listening && 'bg-danger-soft text-danger'">
+                    <x-ui.icon name="mic" class="size-[18px]" />
+                    <span class="absolute right-1.5 top-1.5 size-2 animate-ping rounded-full bg-danger" x-show="s.voice.listening" aria-hidden="true"></span>
+                </button>
+
                 <button type="submit" class="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
                         x-bind:disabled="!s.canSend" x-bind:aria-label="s.t('composer.send')" x-bind:title="s.t('composer.send')">
-                    <span class="size-[18px]" x-html="s.icon(s.processing ? 'loader' : 'send')" x-bind:class="s.processing && 'anim-spin'"></span>
+                    <span class="size-[18px]" x-html="s.icon(s.processing && !s.canSend ? 'loader' : 'send')" x-bind:class="s.processing && !s.canSend && 'anim-spin'"></span>
                 </button>
             </div>
         </div>
