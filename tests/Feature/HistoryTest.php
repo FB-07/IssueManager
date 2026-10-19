@@ -1,0 +1,230 @@
+<?php
+
+use App\Models\Conversation;
+use App\Models\User;
+use Illuminate\Http\Client\Factory;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
+
+function call_as(User $user, string $method, string $uri, array $data = [], array $files = [])
+{
+    return test()->actingAs($user)->call($method, $uri, $data, [], $files, ['HTTP_ACCEPT' => 'application/json']);
+}
+
+beforeEach(function () {
+    $this->a = User::factory()->create();
+    $this->b = User::factory()->create();
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    Cache::flush();
+    Storage::fake('local');
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            ['field' => ['name' => 'Type'], 'bundle' => ['values' => [['name' => 'Anomaly'], ['name' => 'Task']]], '$type' => 'EnumProjectCustomField'],
+            ['field' => ['name' => 'Priority'], 'bundle' => ['values' => [['name' => 'Major'], ['name' => 'Minor']]], '$type' => 'EnumProjectCustomField'],
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([['login' => 'ana', 'fullName' => 'Ana']]),
+        'yt.test/api/agiles*' => Http::response([]),
+    ]);
+});
+
+function turn(User $owner, int $id, array $assistant, string $body = 'pedido', array $files = [])
+{
+    return call_as($owner, 'POST', "/api/conversations/$id/turn", ['body' => $body, 'assistant' => json_encode($assistant)], $files ? ['files' => $files] : []);
+}
+
+it('persists history per browser and lists it on the shell', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->assertCreated()->json('id');
+    turn($this->a, $id, ['text' => 'Olá', 'draft_patch' => null])->assertOk()->assertJsonPath('messages.1.body', 'Olá');
+
+    call_as($this->a, 'GET', '/')->assertOk()->assertSee('"title":"pedido"', false);
+    call_as($this->b, 'GET', '/')->assertOk()->assertDontSee('"title":"pedido"', false);
+    call_as($this->b, 'GET', "/api/conversations/$id")->assertNotFound();
+    call_as($this->b, 'DELETE', "/api/conversations/$id")->assertNotFound();
+    call_as($this->a, 'GET', "/api/conversations/$id")->assertOk()->assertJsonCount(2, 'messages');
+});
+
+it('keeps one draft per conversation, updates it in place and drops invalid values', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+
+    turn($this->a, $id, ['text' => 'Rascunho', 'draft_patch' => [
+        'summary' => 'Botão falha', 'description' => 'desc 15px', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'INVENTED', 'assignee' => 'nobody',
+    ]])->assertOk()->assertJsonPath('draft.type', 'Anomaly')->assertJsonPath('draft.priority', null)->assertJsonPath('draft.assignee', null)
+        ->assertJsonPath('draft.revision', 1)->assertJsonPath('messages.1.meta.card', true);
+
+    turn($this->a, $id, ['text' => 'Atualizado', 'draft_patch' => ['priority' => 'Major', 'assignee' => 'ana']])
+        ->assertOk()->assertJsonPath('draft.priority', 'Major')->assertJsonPath('draft.assignee', 'ana')
+        ->assertJsonPath('draft.summary', 'Botão falha')->assertJsonPath('draft.revision', 2);
+
+    expect(Conversation::find($id)->draft()->count())->toBe(1);
+});
+
+it('stores attachments privately and only serves them to their owner', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    $res = turn($this->a, $id, ['text' => 'ok'], 'vê', [UploadedFile::fake()->image('a.png', 10, 10)])->assertOk();
+    $url = $res->json('messages.0.attachments.0.url');
+
+    call_as($this->a, 'GET', $url)->assertOk()->assertHeader('X-Content-Type-Options', 'nosniff');
+    call_as($this->b, 'GET', $url)->assertNotFound();
+});
+
+it('renames and deletes a conversation (and its files)', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'ok'], 'vê', [UploadedFile::fake()->image('a.png', 10, 10)]);
+
+    call_as($this->a, 'PATCH', "/api/conversations/$id", ['title' => 'Novo nome'])->assertOk()->assertJsonPath('title', 'Novo nome');
+    call_as($this->a, 'DELETE', "/api/conversations/$id")->assertNoContent();
+
+    expect(Conversation::count())->toBe(0);
+    Storage::disk('local')->assertDirectoryEmpty("attachments/$id");
+});
+
+it('creates the issue from the draft only after confirmation, then updates the same issue', function () {
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            ['field' => ['name' => 'Type', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Anomaly']]], '$type' => 'EnumProjectCustomField'],
+            ['field' => ['name' => 'Priority', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Major']]], '$type' => 'EnumProjectCustomField'],
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([]),
+        'yt.test/api/agiles*' => Http::response([]),
+        'yt.test/api/issues/DEV-7*' => Http::response(['id' => '2-7', 'idReadable' => 'DEV-7', 'summary' => 'IssueTesteFabio - Botão falha', 'project' => ['shortName' => 'DEV']]),
+        'yt.test/api/issues*' => Http::response(['id' => '2-7', 'idReadable' => 'DEV-7']),
+    ]);
+
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Botão falha', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major']]);
+
+    call_as($this->a, 'POST', "/api/conversations/$id/draft/create")->assertStatus(422); // not confirmed
+    call_as($this->b, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertNotFound();
+
+    $res = call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertOk()
+        ->assertJsonPath('draft.status', 'created')->assertJsonPath('draft.issue_key', 'DEV-7')
+        ->assertJsonPath('message.kind', 'creation-result')->assertJsonPath('message.meta.key', 'DEV-7');
+    expect($res->json('draft.summary'))->toBe('IssueTesteFabio - Botão falha');
+
+    call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertOk()->assertJsonPath('message.meta.updated', true);
+});
+
+it('keeps the draft and reports an error when YouTrack rejects the creation', function () {
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([]),
+        'yt.test/api/issues*' => Http::response(['error' => 'x'], 400),
+    ]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    $c = Conversation::find($id);
+    $c->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
+
+    call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true])->assertStatus(502)
+        ->assertJsonPath('draft.status', 'error')->assertJsonPath('draft.summary', 's');
+});
+
+it('deletes several conversations at once, only the ones that belong to the user', function () {
+    $mine = [call_as($this->a, 'POST', '/api/conversations')->json('id'), call_as($this->a, 'POST', '/api/conversations')->json('id'), call_as($this->a, 'POST', '/api/conversations')->json('id')];
+    $theirs = call_as($this->b, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $mine[0], ['text' => 'ok'], 'vê', [UploadedFile::fake()->image('a.png', 10, 10)]);
+
+    $res = call_as($this->a, 'DELETE', '/api/conversations', ['ids' => [$mine[0], $mine[1], $theirs, 99999]])->assertOk();
+
+    expect($res->json('deleted'))->toEqualCanonicalizing([$mine[0], $mine[1]])
+        ->and(Conversation::pluck('id')->all())->toEqualCanonicalizing([$mine[2], $theirs]);
+    Storage::disk('local')->assertDirectoryEmpty("attachments/{$mine[0]}");
+
+    call_as($this->a, 'DELETE', '/api/conversations', ['ids' => []])->assertStatus(422);
+    call_as($this->a, 'DELETE', '/api/conversations', ['ids' => ['x']])->assertStatus(422);
+});
+
+it('direct turns (draft mode off) skip the card when the draft is complete and keep it when something is missing', function () {
+    $full = ['summary' => 'Botão falha', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major'];
+
+    $a = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $a, ['text' => 'A criar', 'draft_patch' => $full, 'direct' => true])->assertOk()
+        ->assertJsonPath('messages.1.meta.direct', true)->assertJsonMissingPath('messages.1.meta.card');
+
+    $b = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $b, ['text' => 'Falta', 'draft_patch' => ['summary' => 'x', 'description' => 'y', 'project' => 'DEV'], 'direct' => true])->assertOk()
+        ->assertJsonPath('messages.1.meta.card', true)->assertJsonMissingPath('messages.1.meta.direct');
+});
+
+it('stores a read-only preview and the direct flag in the creation result', function () {
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            ['field' => ['name' => 'Type', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Anomaly']]], '$type' => 'EnumProjectCustomField'],
+            ['field' => ['name' => 'Priority', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Major']]], '$type' => 'EnumProjectCustomField'],
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([]),
+        'yt.test/api/agiles*' => Http::response([]),
+        'yt.test/api/issues*' => Http::response(['id' => '2-8', 'idReadable' => 'DEV-8']),
+    ]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Botão falha', 'description' => '15px', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'labels' => ['pagamentos']], 'direct' => true]);
+
+    call_as($this->a, 'POST', "/api/conversations/$id/draft/create", ['confirmed' => true, 'direct' => true])->assertOk()
+        ->assertJsonPath('message.meta.direct', true)->assertJsonPath('message.meta.preview.description', '15px')
+        ->assertJsonPath('message.meta.preview.type', 'Anomaly')->assertJsonPath('message.meta.preview.labels.0', 'pagamentos');
+});
+
+function fake_yt_for_edit(string $summary = 'IssueTesteFabio - Botão falha'): void
+{
+    Http::swap(new Factory); // drop the stubs of beforeEach: the first matching stub wins
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev']]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            ['field' => ['name' => 'Type', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Anomaly'], ['name' => 'Task']]], '$type' => 'EnumProjectCustomField'],
+            ['field' => ['name' => 'Priority', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Major'], ['name' => 'Minor']]], '$type' => 'EnumProjectCustomField'],
+            ['field' => ['name' => 'State', 'fieldType' => ['isMultiValue' => false]], 'bundle' => ['values' => [['name' => 'Open'], ['name' => 'Closed']]], '$type' => 'StateProjectCustomField'],
+            ['field' => ['name' => 'Assignee', 'fieldType' => ['isMultiValue' => true]], '$type' => 'UserProjectCustomField'],
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([['login' => 'fabio', 'fullName' => 'Fábio']]),
+        'yt.test/api/agiles*' => Http::response([]),
+        'yt.test/api/issues/DEV-7?*' => Http::response(['id' => '2-7', 'idReadable' => 'DEV-7', 'summary' => $summary, 'description' => 'novo texto', 'project' => ['shortName' => 'DEV'],
+            'customFields' => [['name' => 'Type', 'value' => ['name' => 'Task']], ['name' => 'Assignee', 'value' => ['fullName' => 'Fábio']]]]),
+        'yt.test/api/issues/DEV-7' => Http::response(['id' => '2-7']),
+    ]);
+}
+
+it('edits an existing issue from the chat, keeps the title prefix, ignores invalid values and syncs the draft', function () {
+    fake_yt_for_edit();
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    Conversation::find($id)->draft()->create(['summary' => 'IssueTesteFabio - Botão falha', 'description' => 'antigo', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major',
+        'status' => 'created', 'issue_key' => 'DEV-7', 'issue_url' => 'https://yt.test/issue/DEV-7', 'revision' => 3]);
+
+    $res = call_as($this->a, 'POST', "/api/conversations/$id/issues/update", [
+        'issue_id' => 'DEV-7', 'summary' => 'Texto do botão maior', 'description' => 'novo texto', 'type' => 'Task',
+        'priority' => 'INVENTED', 'assignee' => 'fabio', 'state' => 'Open',
+    ])->assertOk()
+        ->assertJsonPath('message.kind', 'creation-result')->assertJsonPath('message.meta.updated', true)->assertJsonPath('message.meta.key', 'DEV-7')
+        ->assertJsonPath('message.meta.preview.assignee', 'Fábio')->assertJsonPath('draft.type', 'Task')->assertJsonPath('draft.revision', 4);
+
+    expect($res->json('message.meta.changes'))->toEqualCanonicalizing(['summary', 'description', 'type', 'assignee', 'state']);
+
+    Http::assertSent(function ($r) {
+        if ($r->method() !== 'POST' || ! str_ends_with($r->url(), '/api/issues/DEV-7?fields=id')) {
+            return false;
+        }
+        $cf = collect($r['customFields'])->keyBy('name');
+
+        return $r['summary'] === 'IssueTesteFabio - Texto do botão maior' // prefix kept: the issue was created by the app
+            && $r['description'] === 'novo texto'
+            && $cf['Type']['value'] === ['name' => 'Task']
+            && $cf['Assignee']['$type'] === 'MultiUserIssueCustomField' && $cf['Assignee']['value'] === [['login' => 'fabio']]
+            && $cf['State']['$type'] === 'StateIssueCustomField'
+            && ! $cf->has('Priority'); // the invented priority was dropped
+    });
+});
+
+it('does not add the prefix when editing an issue the app did not create, and rejects bad requests', function () {
+    fake_yt_for_edit('Issue antigo de outra pessoa');
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7', 'summary' => 'Novo título'])->assertOk();
+    Http::assertSent(fn ($r) => $r->method() === 'POST' && str_ends_with($r->url(), '/api/issues/DEV-7?fields=id') && $r['summary'] === 'Novo título');
+
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7', 'priority' => 'INVENTED'])->assertStatus(422);
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => '../../etc'])->assertStatus(422);
+    call_as($this->b, 'POST', "/api/conversations/$id/issues/update", ['issue_id' => 'DEV-7', 'summary' => 'x'])->assertNotFound();
+});

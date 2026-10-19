@@ -1,0 +1,117 @@
+<div x-show="s.sidebarOpen" x-transition.opacity class="fixed inset-0 z-30 bg-black/55 lg:hidden" @click="s.sidebarOpen = false"></div>
+
+<aside class="fixed inset-y-0 left-0 z-40 flex w-72 -translate-x-full flex-col border-r border-line bg-surface transition-[transform,width] duration-200 lg:static lg:translate-x-0"
+       x-bind:class="[s.sidebarOpen && 'translate-x-0', s.sidebarCollapsed && 'lg:w-[68px]']"
+       x-bind:aria-label="s.t('nav.sidebar')">
+
+    {{-- brand --}}
+    <div class="flex h-14 shrink-0 items-center gap-2.5 px-4">
+        <span class="flex size-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-fg"><x-ui.icon name="logo" class="size-[18px]" /></span>
+        <span class="truncate text-[15px] font-semibold tracking-tight" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('app.name')"></span>
+        <button type="button" class="btn-icon ml-auto size-8 lg:hidden" @click="s.sidebarOpen = false" x-bind:aria-label="s.t('common.close')"><x-ui.icon name="x" /></button>
+    </div>
+
+    {{-- actions --}}
+    <div class="space-y-1 px-3 pb-2">
+        <button type="button" class="btn w-full justify-start bg-surface-2" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.newChat()" x-bind:title="s.t('nav.new_chat')">
+            <x-ui.icon name="plus" class="shrink-0" />
+            <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.new_chat')"></span>
+        </button>
+        <button type="button" class="btn-ghost btn w-full justify-start" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.openIssues()" x-bind:title="s.t('nav.issues')">
+            <x-ui.icon name="search" class="shrink-0" />
+            <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.issues')"></span>
+        </button>
+    </div>
+
+    {{-- history --}}
+    <nav class="min-h-0 flex-1 overflow-y-auto px-3 pb-3" x-bind:class="s.sidebarCollapsed && 'lg:hidden'">
+        <p x-show="s.conversations.length === 0" class="px-2 py-3 text-sm text-faint" x-text="s.t('nav.history_empty')"></p>
+
+        <div class="sticky top-0 z-10 -mx-3 bg-surface px-5 pb-1 pt-2" x-show="s.conversations.length > 0">
+            <div class="flex items-center justify-between" x-show="!s.selectMode">
+                <span class="text-[11px] font-medium uppercase tracking-wider text-faint" x-text="s.t('nav.history')"></span>
+                <button type="button" class="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-fg" @click="s.startSelect()" x-text="s.t('nav.select')"></button>
+            </div>
+            <div class="flex items-center justify-between gap-2" x-show="s.selectMode" x-cloak>
+                <button type="button" class="flex items-center gap-2 rounded-md py-0.5 text-xs font-medium text-muted transition hover:text-fg" role="checkbox" x-bind:aria-checked="s.allSelected" @click="s.toggleSelectAll()">
+                    <span class="flex size-4 items-center justify-center rounded border transition" x-bind:class="s.allSelected ? 'border-accent bg-accent text-accent-fg' : s.selectedIds.length ? 'border-accent text-accent' : 'border-line-strong'">
+                        <span class="size-3" x-show="s.allSelected" x-html="s.icon('check')"></span>
+                        <span class="h-0.5 w-2 rounded bg-accent" x-show="s.selectedIds.length && !s.allSelected"></span>
+                    </span>
+                    <span x-text="s.selectedIds.length ? s.t('nav.selected', { n: s.selectedIds.length }) : s.t('nav.select_all')"></span>
+                </button>
+                <button type="button" class="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-fg" @click="s.cancelSelect()" x-text="s.t('common.cancel')"></button>
+            </div>
+        </div>
+        <template x-for="g in s.groupedConversations" x-bind:key="g.key">
+        <div>
+        <p class="px-2 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-wider text-faint" x-text="s.t('nav.group_' + g.key)"></p>
+        <ul class="space-y-0.5">
+            <template x-for="c in g.items" x-bind:key="c.id">
+                <li class="group relative">
+                    <template x-if="s.renamingId === c.id">
+                        <form class="px-1 py-0.5" @submit.prevent="s.renameConversation(c)">
+                            <input class="field py-1.5" x-model="s.renameValue" x-init="$nextTick(() => $el.select())" @keydown.escape.stop="s.renamingId = null" @blur="s.renameConversation(c)" maxlength="120">
+                        </form>
+                    </template>
+                    <template x-if="s.renamingId !== c.id">
+                        <div class="flex items-center rounded-lg transition hover:bg-surface-2" x-bind:class="(s.selectMode ? s.isSelected(c.id) : s.activeId === c.id) && 'bg-surface-2'">
+                            <button type="button" class="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-sm" @click="s.selectMode ? s.toggleSelect(c.id) : s.openConversation(c.id)" x-bind:aria-current="!s.selectMode && s.activeId === c.id ? 'page' : null" x-bind:role="s.selectMode ? 'checkbox' : null" x-bind:aria-checked="s.selectMode ? s.isSelected(c.id) : null">
+                                <span class="flex size-4 shrink-0 items-center justify-center rounded border transition" x-show="s.selectMode" x-bind:class="s.isSelected(c.id) ? 'border-accent bg-accent text-accent-fg' : 'border-line-strong'">
+                                    <span class="size-3" x-show="s.isSelected(c.id)" x-html="s.icon('check')"></span>
+                                </span>
+                                <span class="size-4 shrink-0 text-faint" x-show="!s.selectMode" x-html="s.icon('message')"></span>
+                                <span class="truncate" x-text="c.title || s.t('nav.untitled')"></span>
+                            </button>
+                            <template x-if="s.deletingId !== c.id && !s.selectMode">
+                                <span class="flex shrink-0 pr-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
+                                    <button type="button" class="btn-icon size-7" @click="s.renamingId = c.id; s.renameValue = c.title" x-bind:aria-label="s.t('common.rename')"><x-ui.icon name="pencil" class="size-3.5" /></button>
+                                    <button type="button" class="btn-icon size-7 hover:text-danger" @click="s.deletingId = c.id" x-bind:aria-label="s.t('common.delete')"><x-ui.icon name="trash" class="size-3.5" /></button>
+                                </span>
+                            </template>
+                            <template x-if="s.deletingId === c.id && !s.selectMode">
+                                <span class="flex shrink-0 items-center gap-0.5 pr-1">
+                                    <button type="button" class="btn-icon size-7 text-danger" @click="s.deleteConversation(c)" x-bind:aria-label="s.t('common.confirm')"><x-ui.icon name="check" class="size-3.5" /></button>
+                                    <button type="button" class="btn-icon size-7" @click="s.deletingId = null" x-bind:aria-label="s.t('common.cancel')"><x-ui.icon name="x" class="size-3.5" /></button>
+                                </span>
+                            </template>
+                        </div>
+                    </template>
+                </li>
+            </template>
+        </ul>
+        </div>
+        </template>
+    </nav>
+
+    {{-- bulk delete --}}
+    <div class="shrink-0 border-t border-line p-3" x-show="s.selectMode" x-cloak>
+        <template x-if="!s.confirmBulk">
+            <button type="button" class="btn btn-danger w-full" x-bind:disabled="!s.selectedIds.length" @click="s.confirmBulk = true">
+                <x-ui.icon name="trash" /><span x-text="s.t('nav.delete_selected', { n: s.selectedIds.length })"></span>
+            </button>
+        </template>
+        <template x-if="s.confirmBulk">
+            <div class="space-y-2">
+                <p class="text-xs text-muted" x-text="s.t('nav.delete_confirm', { n: s.selectedIds.length })"></p>
+                <div class="flex gap-2">
+                    <button type="button" class="btn flex-1" @click="s.confirmBulk = false" x-bind:disabled="s.bulkDeleting" x-text="s.t('common.cancel')"></button>
+                    <button type="button" class="btn btn-danger flex-1" @click="s.deleteSelected()" x-bind:disabled="s.bulkDeleting" x-text="s.bulkDeleting ? s.t('common.loading') : s.t('common.delete')"></button>
+                </div>
+            </div>
+        </template>
+    </div>
+    <div class="flex-1" x-bind:class="s.sidebarCollapsed ? 'hidden lg:block' : 'hidden'"></div>
+
+    {{-- profile --}}
+    <div class="shrink-0 border-t border-line p-3">
+        <button type="button" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-surface-2" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.settingsOpen = true; s.sidebarOpen = false" x-bind:title="s.t('nav.settings')">
+            <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent" x-text="s.user.name.slice(0, 1)"></span>
+            <span class="min-w-0 flex-1" x-bind:class="s.sidebarCollapsed && 'lg:hidden'">
+                <span class="block truncate text-sm font-medium" x-text="s.user.name"></span>
+                <span class="block truncate text-xs text-faint" x-text="s.t('nav.settings')"></span>
+            </span>
+            <x-ui.icon name="settings" class="shrink-0 text-faint" />
+        </button>
+    </div>
+</aside>

@@ -1,0 +1,147 @@
+@import 'tailwindcss';
+
+@source '../**/*.blade.php';
+@source '../**/*.js';
+
+/* ---- Design tokens ------------------------------------------------------
+   All colours live here. Dark is the default; light overrides on [data-theme=light]. */
+:root {
+    color-scheme: dark;
+    --bg: #000000;
+    --surface: #0b0b0b;
+    --surface-2: #151515;
+    --surface-3: #212121;
+    --line: #2a2a2a;
+    --line-strong: #444444;
+    --fg: #ffffff;
+    --muted: #a6a6a6;
+    --faint: #737373;
+    --accent: #ffffff;
+    --accent-hover: #d9d9d9;
+    --accent-soft: rgb(255 255 255 / 0.12);
+    --accent-fg: #000000;
+    --success: #4ade80;
+    --success-soft: rgb(74 222 128 / 0.14);
+    --danger: #ff6b6b;
+    --danger-soft: rgb(255 107 107 / 0.14);
+    --warn: #f5b942;
+    --warn-soft: rgb(245 185 66 / 0.14);
+    --shadow: 0 10px 40px -12px rgb(0 0 0 / 0.9);
+}
+
+:root[data-theme='light'] {
+    color-scheme: light;
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --surface-2: #f4f4f4;
+    --surface-3: #e9e9e9;
+    --line: #e2e2e2;
+    --line-strong: #bdbdbd;
+    --fg: #000000;
+    --muted: #525252;
+    --faint: #8a8a8a;
+    --accent: #000000;
+    --accent-hover: #2b2b2b;
+    --accent-soft: rgb(0 0 0 / 0.07);
+    --accent-fg: #ffffff;
+    --success: #15803d;
+    --success-soft: rgb(21 128 61 / 0.1);
+    --danger: #c62828;
+    --danger-soft: rgb(198 40 40 / 0.08);
+    --warn: #a15c00;
+    --warn-soft: rgb(161 92 0 / 0.1);
+    --shadow: 0 10px 40px -14px rgb(0 0 0 / 0.25);
+}
+
+@theme inline {
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+    --color-bg: var(--bg);
+    --color-surface: var(--surface);
+    --color-surface-2: var(--surface-2);
+    --color-surface-3: var(--surface-3);
+    --color-line: var(--line);
+    --color-line-strong: var(--line-strong);
+    --color-fg: var(--fg);
+    --color-muted: var(--muted);
+    --color-faint: var(--faint);
+    --color-accent: var(--accent);
+    --color-accent-hover: var(--accent-hover);
+    --color-accent-soft: var(--accent-soft);
+    --color-accent-fg: var(--accent-fg);
+    --color-success: var(--success);
+    --color-success-soft: var(--success-soft);
+    --color-danger: var(--danger);
+    --color-danger-soft: var(--danger-soft);
+    --color-warn: var(--warn);
+    --color-warn-soft: var(--warn-soft);
+}
+
+[x-cloak] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+
+/* ---- Reusable primitives ---------------------------------------------- */
+@layer components {
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-fg transition
+            hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent
+            disabled:cursor-not-allowed disabled:opacity-50;
+    }
+    .btn-primary {
+        @apply border-transparent bg-accent text-accent-fg hover:bg-accent-hover;
+    }
+    .btn-danger {
+        @apply border-transparent bg-danger text-white hover:opacity-90;
+    }
+    .btn-ghost {
+        @apply border-transparent bg-transparent text-muted hover:bg-surface-2 hover:text-fg;
+    }
+    .btn-icon {
+        @apply inline-flex size-9 items-center justify-center rounded-lg border border-transparent text-muted transition
+            hover:bg-surface-2 hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent;
+    }
+    .field {
+        @apply w-full rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm text-fg placeholder:text-faint transition
+            focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25;
+    }
+    .field-invalid {
+        @apply border-danger/70 focus:border-danger focus:ring-danger/25;
+    }
+    .label {
+        @apply mb-1.5 block text-xs font-medium text-muted;
+    }
+    .chip {
+        @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface-2 px-2.5 py-1 text-xs text-muted;
+    }
+    .badge {
+        @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium;
+    }
+    .prose-msg p { @apply my-1.5 leading-relaxed; }
+    .prose-msg ul { @apply my-2 list-disc space-y-1 pl-5; }
+    .prose-msg h2 { @apply mt-4 mb-1 text-sm font-semibold; }
+    .prose-msg code { @apply rounded bg-surface-3 px-1 py-0.5 font-mono text-[0.85em]; }
+}
+
+/* ---- Motion (discreet) -------------------------------------------------- */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes dots { 0%, 80%, 100% { opacity: 0.25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-2px); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+.anim-rise { animation: rise 0.25s ease both; }
+.anim-spin { animation: spin 0.9s linear infinite; }
+.dot { animation: dots 1.2s infinite ease-in-out; }
+.dot:nth-child(2) { animation-delay: 0.15s; }
+.dot:nth-child(3) { animation-delay: 0.3s; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
