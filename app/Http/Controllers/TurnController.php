@@ -46,7 +46,19 @@ class TurnController extends Controller
             return $e->response();
         }
 
-        return DB::transaction(function () use ($request, $c, $text, $reply, $patch) {
+        $batch = [];
+        if (YouTrackClient::configured() && is_array($reply['batch'] ?? null)) {
+            try {
+                $batch = BatchController::sanitizeProposals($reply['batch'], $yt);
+            } catch (TrackerException $e) {
+                return $e->response();
+            }
+        }
+        if ($batch) {
+            $patch = null; // a batch replaces the single draft for this turn
+        }
+
+        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch) {
             $user = $c->messages()->create(['role' => 'user', 'kind' => 'text', 'body' => $text]);
 
             foreach ($request->file('files', []) as $file) {
@@ -89,13 +101,14 @@ class TurnController extends Controller
                     'card' => $patch && ! $direct ? true : null,
                     'direct' => $direct ?: null,
                     'revision' => $patch && ! $direct ? $draft->revision : null,
+                    'batch' => $batch ? ['items' => $batch] : null,
                     'asked_assignee' => ! empty($reply['asked_assignee']) ? true : null,
                     'replies' => QuickReplies::sanitize($reply['replies'] ?? [], allowActions: true) ?: null,
                 ]),
             ]);
 
             if (blank($c->title)) {
-                $c->title = Str::limit($draft?->summary ?: ($text ?: ($user->attachments->first()?->name ?? 'Nova conversa')), 48, '…');
+                $c->title = Str::limit($draft?->summary ?: ($batch[0]['summary'] ?? null) ?: ($text ?: ($user->attachments->first()?->name ?? 'Nova conversa')), 48, '…');
             }
             $c->touch();
             $c->save();

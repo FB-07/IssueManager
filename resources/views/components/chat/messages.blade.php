@@ -21,6 +21,9 @@
                     <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><x-ui.icon name="logo" class="size-4" /></span>
                     <div class="min-w-0 flex-1">
                         <div class="prose-msg text-[15px]" x-html="s.render(m.body)"></div>
+                        <template x-if="m.meta?.batch">
+                            <x-chat.batch />
+                        </template>
                         <template x-if="m.id === s.lastCardId && s.draft && (m.meta?.card || s.draft.status === 'error')">
                             <x-issue.card />
                         </template>

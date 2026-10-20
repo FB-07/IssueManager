@@ -8,6 +8,8 @@ const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
 
 let similarTimer;
+const batchScopes = new Map();
+const EMPTY_META = { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
 
 export function createStore(boot) {
     let saveTimer = null;
@@ -61,6 +63,7 @@ export function createStore(boot) {
         cardTab: 'edit',
         simulateError: false,
         pending: new Set(),
+        batches: {},
         projects: null,
         metaByProject: {},
 
@@ -197,6 +200,7 @@ export function createStore(boot) {
             this.advancedOpen = false;
             this.cardTab = 'edit';
             this.pending.clear();
+            this.batches = {};
         },
         newChat() {
             this.stopVoice();
@@ -216,6 +220,7 @@ export function createStore(boot) {
                 this.activeId = data.conversation.id;
                 this.messages = data.messages;
                 this.draft = data.draft;
+                this.batches = {};
                 this.advancedOpen = false;
                 this.cardTab = 'edit';
                 this.pending.clear();
@@ -464,7 +469,7 @@ export function createStore(boot) {
 
                 live = { id: `tmp-${++uid}`, role: 'assistant', kind: 'text', body: '', meta: {}, attachments: [] };
                 let text = '';
-                const { patch: draftPatch, created, updated, replies: modelReplies } = await streamChat(
+                const { patch: draftPatch, created, updated, replies: modelReplies, batch } = await streamChat(
                     {
                         payload: {
                             messages: turns,
@@ -488,8 +493,12 @@ export function createStore(boot) {
                 );
 
                 // draft mode off: Claude may call create_issue when the user explicitly asks for an issue
-                const direct = !this.draftEnabled && !!created;
-                const patch = direct ? created : draftPatch;
+                // several issues proposed from a pasted text: reviewed one by one in a checklist, never created right away
+                const proposals = batch?.issues?.length ? batch.issues : null;
+                const direct = !proposals && !this.draftEnabled && !!created;
+                const patch = proposals ? null : direct ? created : draftPatch;
+                if (proposals && batch.message?.trim()) text = batch.message;
+                if (proposals && !text.trim()) text = this.t('batch.found', { n: proposals.length });
 
                 if (patch?.message && typeof patch.message === 'string') {
                     text = patch.message;
@@ -523,7 +532,7 @@ export function createStore(boot) {
 
                 const fd = new FormData();
                 fd.append('body', body);
-                fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, asked_assignee: askedAssignee, replies }));
+                fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, batch: proposals, asked_assignee: askedAssignee, replies }));
                 files.forEach((f) => fd.append('files[]', f.file));
                 const res = await api('POST', `/api/conversations/${this.activeId}/turn`, fd);
 
@@ -553,6 +562,170 @@ export function createStore(boot) {
                 this.streaming = false;
                 const next = this.queue.shift();
                 if (next) setTimeout(() => this.send(next.body, next.files), 0);
+            }
+        },
+        // ---- batch of proposed issues (one pasted text -> N issues, swiped through like a deck) ----
+        // Every proposal is decided one by one (decision: null -> accepted | rejected); only when all are decided can the
+        // accepted ones be created. `status` is the server side: pending -> created | discarded.
+        batchItems(m) {
+            return m.meta?.batch?.items ?? [];
+        },
+        /** Local, editable copy of the proposals of message `m` (kept apart so edits survive re-renders). */
+        batchState(m) {
+            if (!this.batches[m.id]) {
+                this.batches[m.id] = {
+                    busy: false,
+                    viewing: null, // index of an accepted proposal opened for editing
+                    history: [], // decided indexes, newest last (for "back")
+                    rows: this.batchItems(m).map((it) => ({
+                        ...it,
+                        labels: [...(it.labels ?? [])],
+                        custom_fields: { ...(it.custom_fields ?? {}) },
+                        decision: it.status === 'created' ? 'accepted' : it.status === 'discarded' ? 'rejected' : null,
+                    })),
+                };
+                [...new Set(this.batchItems(m).map((it) => it.project).filter(Boolean))].forEach((p) => this.loadMeta(p));
+            }
+
+            return this.batches[m.id];
+        },
+        /** Index of the next proposal still to decide, or null when all are decided. */
+        batchCursor(m) {
+            const i = this.batchState(m).rows.findIndex((r) => r.status === 'pending' && !r.decision);
+
+            return i < 0 ? null : i;
+        },
+        batchPending(m) {
+            return this.batchState(m).rows.filter((r) => r.status === 'pending');
+        },
+        batchAccepted(m) {
+            return this.batchState(m).rows.map((r, index) => ({ r, index })).filter(({ r }) => r.decision === 'accepted');
+        },
+        batchToCreate(m) {
+            return this.batchAccepted(m).filter(({ r }) => r.status === 'pending');
+        },
+        batchRejected(m) {
+            return this.batchPending(m).filter((r) => r.decision === 'rejected');
+        },
+        batchMissing(row) {
+            return REQUIRED.filter((f) => !String(row[f] ?? '').trim());
+        },
+        /** Same interface as the store's single draft (draft, meta, missing, setField…), so the normal issue card can edit one proposal. */
+        batchScope(m, i) {
+            const key = `${m.id}:${i}`;
+            if (!batchScopes.has(key)) {
+                const self = this;
+                const row = () => self.batchState(m).rows[i];
+                batchScopes.set(key, {
+                    index: i,
+                    get total() {
+                        return self.batchState(m).rows.length;
+                    },
+                    get draft() {
+                        return row();
+                    },
+                    get meta() {
+                        return self.metaByProject[row()?.project] ?? EMPTY_META;
+                    },
+                    get missing() {
+                        return self.batchMissing(row());
+                    },
+                    get valid() {
+                        return this.missing.length === 0;
+                    },
+                    setField(field, value) {
+                        if (field === 'project') self.batchSetProject(row(), value ?? '');
+                        else row()[field] = value;
+                    },
+                    setCustom(key2, value) {
+                        row().custom_fields = { ...row().custom_fields, [key2]: value };
+                    },
+                    addLabel(raw) {
+                        const label = raw.trim().replace(/,$/, '');
+                        if (label && !row().labels.includes(label)) row().labels = [...row().labels, label];
+                    },
+                    removeLabel(label) {
+                        row().labels = row().labels.filter((l) => l !== label);
+                    },
+                });
+            }
+
+            return batchScopes.get(key);
+        },
+        batchSetProject(row, project) {
+            row.project = project;
+            row.type = row.priority = row.assignee = row.subsystem = row.sprint = '';
+            row.custom_fields = {};
+            this.loadMeta(project);
+        },
+        /** Approving needs the required fields; rejecting is always possible. */
+        batchCanDecide(m, i, decision) {
+            if (decision === 'accepted' && this.batchMissing(this.batchState(m).rows[i]).length) {
+                this.notify(this.t('batch.missing'), 'error');
+
+                return false;
+            }
+
+            return !this.batchState(m).busy;
+        },
+        batchDecide(m, i, decision) {
+            if (!this.batchCanDecide(m, i, decision)) return false;
+            const st = this.batchState(m);
+            st.rows[i].decision = decision;
+            if (st.viewing === i) st.viewing = null;
+            st.history = [...st.history.filter((x) => x !== i), i];
+
+            return true;
+        },
+        /** Undo the last decision: that proposal comes back to be decided again (with its edits). */
+        batchBack(m) {
+            const st = this.batchState(m);
+            const i = [...st.history].reverse().find((x) => st.rows[x]?.status === 'pending');
+            if (i === undefined) return;
+            st.history = st.history.filter((x) => x !== i);
+            st.rows[i].decision = null;
+            st.rows[i].error = null;
+            st.viewing = null;
+        },
+        /** Creates the accepted proposals (with the edits made in their cards) and discards the rejected ones. */
+        async batchCreate(m) {
+            const st = this.batchState(m);
+            if (st.busy || this.batchCursor(m) !== null) return;
+            const accepted = this.batchToCreate(m);
+            const bad = accepted.find(({ r }) => this.batchMissing(r).length);
+            if (bad) {
+                st.viewing = bad.index;
+
+                return this.notify(this.t('batch.missing'), 'error');
+            }
+            await this.batchSend(m, {
+                create: accepted.map(({ r, index }) => ({ index, summary: r.summary, description: r.description, project: r.project, type: r.type, priority: r.priority, assignee: r.assignee ?? '', subsystem: r.subsystem ?? '', labels: r.labels ?? [], custom_fields: r.custom_fields ?? {} })),
+                discard: st.rows.map((r, index) => ({ r, index })).filter(({ r }) => r.status === 'pending' && r.decision === 'rejected').map(({ index }) => index),
+            });
+        },
+        async batchSend(m, body) {
+            const st = this.batchState(m);
+            st.busy = true;
+            try {
+                const res = await api('POST', `/api/conversations/${this.activeId}/messages/${m.id}/batch`, body);
+                const old = st.rows;
+                const at = this.messages.findIndex((x) => x.id === m.id);
+                if (at >= 0) this.messages[at] = res.message;
+                // a failed creation stays accepted (with its edits and the server's error); the rest shows the saved state
+                st.rows = res.message.meta.batch.items.map((it, i) =>
+                    it.status === 'pending' && old[i]
+                        ? { ...old[i], error: it.error ?? null }
+                        : { ...it, labels: it.labels ?? [], custom_fields: it.custom_fields ?? {}, decision: it.status === 'created' ? 'accepted' : 'rejected' },
+                );
+                st.viewing = null;
+                const items = res.message.meta.batch.items;
+                const created = items.filter((it) => it.status === 'created').length;
+                const failed = items.filter((it) => it.status === 'pending' && it.error).length;
+                this.notify(failed ? this.t('batch.partial', { ok: created, failed }) : this.t('batch.done'), failed ? 'error' : 'success');
+            } catch (e) {
+                this.notify(e.message, 'error');
+            } finally {
+                st.busy = false;
             }
         },
         /** Draft mode off + explicit request: the issue is created right away and shown as result + preview. */

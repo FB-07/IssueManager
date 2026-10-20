@@ -31,6 +31,11 @@ TXT;
 Quick replies: whenever you ask the user a clarifying question, or ask who to assign / which project to use, ALSO call `suggest_replies` with 2-4 short, realistic answers the user could click (they send it as their next message). Write the question itself as normal text (or in the tool's `message` field) as usual; the buttons only complement it. For people use `kind: "person"` and `value` = the person's login from the catalog; for projects `kind: "project"` and `value` = the project key; otherwise `kind: "text"`. Never add an "Other" option (the user can always type). Do NOT call it when you are not asking anything, and never offer more than 4.
 TXT;
 
+    /** Several issues from one pasted text (meeting notes, email, log). */
+    private const BATCH_RULES = <<<'TXT'
+Several issues at once: when the user pastes (or attaches) a longer text such as meeting minutes, an email thread, a log, a test report or a list, and it contains TWO OR MORE separate actionable items (bugs, tasks, requests), call `propose_issues` ONCE with one entry per item instead of the single-issue tool. The app shows them as a checklist; the user reviews, edits and approves each one, and only then are they created. Rules: one issue per distinct action item or problem (merge duplicates, split unrelated things, skip chit-chat, decisions without action and items that are already done); at most 15; every entry follows the same field rules as a single issue (always infer type, priority, project and subsystem; assignee only when a person is named as responsible for that item); each description is self-contained Markdown with the relevant context quoted or paraphrased from the text, never invented details. The `message` summarises what you found (e.g. "Encontrei 5 itens acionáveis…") and mentions anything you left out and why. If the text holds a single item, use the normal single-issue flow. Never claim the issues were created: they are only proposed.
+TXT;
+
     /** Names of the tools the server runs itself (the model continues after their result). */
     public const SERVER_TOOLS = ['find_issues', 'get_issue'];
 
@@ -49,6 +54,7 @@ TXT;
             ."Never claim you cannot create issues in YouTrack.\n\n"
             ."Rules for the tool fields:\n".self::FIELD_RULES
             ."\n\n".self::EDIT_RULES
+            ."\n\n".self::BATCH_RULES
             ."\n\n".self::QUICK_REPLY_RULES
             ."\n\nValid catalog values (use exactly these strings). `projects` lists the projects; `byProject[KEY]` has the valid types, priorities, subsystems, states, sprints, assignees (value = login) and custom fields of that project. After choosing the project, use ONLY values from that project's lists (an empty list means: leave that field out):\n{$catalogJson}"
             .self::linkedIssue($draft);
@@ -71,6 +77,7 @@ TXT;
         $languageRule = self::LANGUAGE_RULE;
         $editRules = self::EDIT_RULES;
         $quickRules = self::QUICK_REPLY_RULES;
+        $batchRules = self::BATCH_RULES;
         $fieldRules = self::FIELD_RULES."\n";
         $assigneeRule = <<<'RULE'
   - ASSIGNEE QUESTION: whenever you present or update the draft and the current draft has no assignee (and the user did not just decline), the `message` MUST end with a short question asking whether they want to assign someone, naming the people available in the catalog (use their labels). If the user answers with a name, call the tool again with `assignee` set to that person's login; if they decline ("no", "nobody", "leave it"), do not ask again.
@@ -91,6 +98,8 @@ Behaviour:
 {$fieldRules}{$assigneeRule}- You cannot create the issue yourself and must never say you did: the user reviews the draft card and confirms creation with a button. Do not describe the contents of attachments you cannot see.
 
 {$editRules}
+
+{$batchRules}
 
 {$quickRules}
 
@@ -144,6 +153,27 @@ PROMPT;
         $tool['input_schema']['properties']['message']['description'] = 'Short message to the user (same language; pt-PT if Portuguese) saying what issue is being created: type, priority, project and why. The app creates the issue right after.';
 
         return $tool;
+    }
+
+    /** Several proposals at once; nothing is created until the user approves each one in the app. */
+    public static function proposeIssuesTool(): array
+    {
+        $item = self::draftTool()['input_schema'];
+        unset($item['properties']['message']);
+        $item['required'] = ['summary', 'description', 'project', 'type', 'priority'];
+
+        return [
+            'name' => 'propose_issues',
+            'description' => 'Propose 2-15 YouTrack issues extracted from a pasted text (meeting notes, email, log). The user reviews and approves each one before it is created.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'message' => ['type' => 'string', 'description' => 'Message shown in the chat (user\'s language; pt-PT if Portuguese): how many items you found and what you left out and why.'],
+                    'issues' => ['type' => 'array', 'minItems' => 1, 'maxItems' => 15, 'items' => $item],
+                ],
+                'required' => ['message', 'issues'],
+            ],
+        ];
     }
 
     /** Edit an existing issue; the app applies it in YouTrack right away. */

@@ -15,7 +15,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Stateless proxy to the Anthropic Messages API (streaming). The API key never reaches the browser.
- * Events (SSE): text {t}, draft {patch}, create {issue}, update {issue}, replies {replies}, error {message}, done {}.
+ * Events (SSE): text {t}, draft {patch}, create {issue}, update {issue}, batch {message, issues}, replies {replies}, error {message}, done {}.
  */
 class ChatController extends Controller
 {
@@ -63,6 +63,7 @@ class ChatController extends Controller
             $draftOn ? ClaudePrompt::draftTool() : ClaudePrompt::createTool(),
             ClaudePrompt::suggestRepliesTool(),
             $yt ? ClaudePrompt::updateIssueTool() : null,
+            $yt ? ClaudePrompt::proposeIssuesTool() : null,
             $yt ? ClaudePrompt::findIssuesTool() : null,
             $yt ? ClaudePrompt::getIssueTool() : null,
         ]));
@@ -131,6 +132,13 @@ class ChatController extends Controller
                 $result = $this->streamRound($cfg, $body, $emit);
                 if ($result === null) {
                     return; // an error event was already sent
+                }
+
+                if ($result['stop'] === 'max_tokens') {
+                    Log::warning('Claude answer cut off (max_tokens)', ['max_tokens' => $body['max_tokens']]);
+                    $emit('error', ['message' => __('ui.errors.chat_truncated')]);
+
+                    return;
                 }
 
                 $lookups = array_filter($result['blocks'], fn ($b) => $b['type'] === 'tool_use' && in_array($b['name'], ClaudePrompt::SERVER_TOOLS, true));
@@ -239,9 +247,13 @@ class ChatController extends Controller
                         }
                     }
 
-                    $event = ['update_issue_draft' => 'draft', 'create_issue' => 'create', 'update_issue' => 'update'][$block['name']] ?? null;
+                    $event = ['update_issue_draft' => 'draft', 'create_issue' => 'create', 'update_issue' => 'update', 'propose_issues' => 'batch'][$block['name']] ?? null;
                     if ($event && is_array($input)) {
-                        $emit($event, $event === 'draft' ? ['patch' => $input] : ['issue' => $input]);
+                        $emit($event, match ($event) {
+                            'draft' => ['patch' => $input],
+                            'batch' => ['message' => $input['message'] ?? '', 'issues' => array_values((array) ($input['issues'] ?? []))],
+                            default => ['issue' => $input],
+                        });
                     }
                     unset($block);
                 }

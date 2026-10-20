@@ -131,6 +131,16 @@ return [
         'confirm' => 'Confirm',
     ],
 
+    'batch' => [
+        'approve' => 'Approve', 'reject' => 'Reject', 'back' => 'Undo last decision', 'close' => 'Close', 'remaining' => ':n left to review', 'all_reviewed' => 'All reviewed', 'finished' => 'Done', 'summary' => ':a approved · :r rejected', 'accepted_title' => 'Approved (:n)', 'finish' => 'Finish',
+        'counter' => 'Issue :i of :n', 'prev' => 'Previous', 'next' => 'Next', 'include' => 'Include', 'created' => 'Created', 'discarded' => 'Discarded',
+        'title' => ':n proposed issues', 'hint' => 'Tick the ones to create. Click a title to edit it. Nothing is created until you approve.',
+        'select_all' => 'All', 'select_none' => 'None', 'edit' => 'Edit', 'discard' => 'Discard', 'incomplete' => 'Incomplete',
+        'selected' => ':n of :total selected', 'create' => 'Create :n in YouTrack', 'creating' => 'Creating…',
+        'found' => 'I found :n items to turn into issues.', 'missing' => 'Fill in the required fields of the highlighted issues first.',
+        'done' => 'Issues created in YouTrack.', 'partial' => 'Created :ok; :failed failed (see the list).',
+    ],
+
     'result' => [
         'attachments' => 'Attachments sent', 'attachments_failed' => 'Could not attach: :names',
         'changes' => 'Changed',
@@ -184,6 +194,7 @@ return [
         'tracker_not_configured' => 'YouTrack is not configured (YOUTRACK_URL and YOUTRACK_TOKEN).',
         'issue_not_found' => 'Issue not found.',
         'chat_not_configured' => 'Chat is not configured (CLAUDE_API_KEY is missing on the server).',
+        'chat_truncated' => 'The answer was too long and got cut off. Try with a shorter text or fewer items.',
         'chat_failed' => 'Could not get a reply from Claude. Please try again.',
         'chat_auth' => 'The Claude API key was rejected.',
         'chat_rate' => 'Too many requests to Claude. Please wait a moment.',

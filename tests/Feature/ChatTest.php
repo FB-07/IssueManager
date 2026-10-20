@@ -48,12 +48,12 @@ it('streams text and the draft tool call as SSE and sends the tool only when ena
 
     Http::assertSent(fn ($r) => $r->header('x-api-key')[0] === 'test-key'
         && $r['stream'] === true
-        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'find_issues', 'get_issue']
+        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'get_issue']
         && str_contains($r['system'], 'NO suggestions'));
 
     Http::fake(['api.anthropic.com/*' => Http::response(sse([]), 200)]);
     $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
-    Http::assertSent(fn ($r) => collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'find_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
+    Http::assertSent(fn ($r) => collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
 });
 
 it('sends images as base64 blocks and never leaks the key on API errors', function () {
@@ -149,4 +149,17 @@ it('does not emit a replies event when the model offers nothing usable', functio
     ]), 200)]);
 
     expect($this->post('/api/chat', chatPayload())->streamedContent())->not->toContain('event: replies')->toContain('event: done');
+});
+
+it('forwards propose_issues as a batch event with the proposals', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response(sse([
+        ['type' => 'content_block_start', 'index' => 0, 'content_block' => ['type' => 'tool_use', 'name' => 'propose_issues']],
+        ['type' => 'content_block_delta', 'index' => 0, 'delta' => ['type' => 'input_json_delta', 'partial_json' => '{"message":"Encontrei 2","issues":[{"summary":"A"},{"summary":"B"}]}']],
+        ['type' => 'content_block_stop', 'index' => 0],
+    ]), 200)]);
+
+    $out = $this->post('/api/chat', chatPayload())->streamedContent();
+
+    expect($out)->toContain('event: batch')->toContain('"message":"Encontrei 2"')->toContain('"summary":"B"')->not->toContain('event: error');
 });

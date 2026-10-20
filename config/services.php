@@ -40,7 +40,7 @@ return [
         'model' => env('CLAUDE_MODEL', 'claude-haiku-5-5'),
         'url' => env('CLAUDE_API_URL', 'https://api.anthropic.com/v1/messages'),
         'version' => '2023-06-01',
-        'max_tokens' => (int) env('CLAUDE_MAX_TOKENS', 4096),
+        'max_tokens' => (int) env('CLAUDE_MAX_TOKENS', 12000),
     ],
 
     'youtrack' => [

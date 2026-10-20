@@ -3,6 +3,7 @@
 use App\Http\Controllers\AppController;
 use App\Http\Controllers\AttachmentController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BatchController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DraftController;
@@ -37,6 +38,7 @@ Route::middleware('auth')->group(function () {
         Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/turn', TurnController::class)->whereNumber('conversation');
         Route::patch('/conversations/{conversation}/draft', [DraftController::class, 'update'])->whereNumber('conversation');
+        Route::post('/conversations/{conversation}/messages/{message}/batch', BatchController::class)->whereNumber(['conversation', 'message'])->middleware('throttle:20,1');
         Route::post('/conversations/{conversation}/issues/update', IssueEditController::class)->whereNumber('conversation');
         Route::get('/conversations/{conversation}/draft/similar', [DraftController::class, 'similar'])->whereNumber('conversation')->middleware('throttle:60,1');
         Route::post('/conversations/{conversation}/draft/create', [DraftController::class, 'create'])->whereNumber('conversation');

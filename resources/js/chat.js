@@ -4,7 +4,7 @@ const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ??
 
 /**
  * Streams a chat turn from POST /api/chat (Server-Sent Events over fetch).
- * Handlers: onText(delta). Resolves with { patch, created }: the draft tool input, or the create_issue tool input when the draft mode is off.
+ * Handlers: onText(delta). Resolves with { patch, created, updated, replies, batch }: the draft tool input, or the create_issue tool input when the draft mode is off.
  */
 export async function streamChat({ payload, files = [], signal }, { onText }) {
     const fd = new FormData();
@@ -31,6 +31,7 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
     let created = null;
     let updated = null;
     let replies = null;
+    let batch = null;
 
     const handle = (raw) => {
         let event = 'message';
@@ -45,6 +46,7 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
         else if (event === 'draft') patch = json.patch;
         else if (event === 'create') created = json.issue;
         else if (event === 'update') updated = json.issue;
+        else if (event === 'batch') batch = json;
         else if (event === 'replies') replies = json.replies;
         else if (event === 'error') throw new ApiError(502, { message: json.message });
     };
@@ -60,5 +62,5 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
         }
     }
 
-    return { patch, created, updated, replies };
+    return { patch, created, updated, replies, batch };
 }

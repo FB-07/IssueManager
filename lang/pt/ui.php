@@ -131,6 +131,16 @@ return [
         'confirm' => 'Confirmar',
     ],
 
+    'batch' => [
+        'approve' => 'Aprovar', 'reject' => 'Rejeitar', 'back' => 'Anular a última decisão', 'close' => 'Fechar', 'remaining' => 'Faltam :n para rever', 'all_reviewed' => 'Tudo revisto', 'finished' => 'Concluído', 'summary' => ':a aprovados · :r rejeitados', 'accepted_title' => 'Aprovados (:n)', 'finish' => 'Concluir',
+        'counter' => 'Issue :i de :n', 'prev' => 'Anterior', 'next' => 'Seguinte', 'include' => 'Incluir', 'created' => 'Criado', 'discarded' => 'Descartado',
+        'title' => ':n issues propostos', 'hint' => 'Marca os que queres criar. Clica no título para editar. Nada é criado sem a tua aprovação.',
+        'select_all' => 'Todos', 'select_none' => 'Nenhum', 'edit' => 'Editar', 'discard' => 'Descartar', 'incomplete' => 'Incompleto',
+        'selected' => ':n de :total selecionados', 'create' => 'Criar :n no YouTrack', 'creating' => 'A criar…',
+        'found' => 'Encontrei :n itens para transformar em issues.', 'missing' => 'Preenche primeiro os campos obrigatórios dos issues destacados.',
+        'done' => 'Issues criados no YouTrack.', 'partial' => 'Criados: :ok; falharam: :failed (vê a lista).',
+    ],
+
     'result' => [
         'attachments' => 'Anexos enviados', 'attachments_failed' => 'Não foi possível anexar: :names',
         'changes' => 'Alterado',
@@ -184,6 +194,7 @@ return [
         'tracker_not_configured' => 'O YouTrack não está configurado (YOUTRACK_URL e YOUTRACK_TOKEN).',
         'issue_not_found' => 'Issue não encontrado.',
         'chat_not_configured' => 'O chat não está configurado (falta CLAUDE_API_KEY no servidor).',
+        'chat_truncated' => 'A resposta ficou demasiado longa e foi cortada. Tenta com um texto mais curto ou menos itens.',
         'chat_failed' => 'Não foi possível obter resposta do Claude. Tenta novamente.',
         'chat_auth' => 'A chave da API do Claude foi rejeitada.',
         'chat_rate' => 'Demasiados pedidos ao Claude. Aguarda um momento.',
