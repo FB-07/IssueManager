@@ -8,6 +8,7 @@ const MAX_FILES = 10;
 const MAX_BYTES = 10 * 1024 * 1024;
 
 let similarTimer;
+let batchSimilarTimer;
 const batchScopes = new Map();
 const EMPTY_META = { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
 
@@ -50,6 +51,7 @@ export function createStore(boot) {
         draft: null,
         similarIssues: [],
         similarKey: null,
+        dupAck: false,
         loadingConversation: false,
         processing: false,
         queue: [],
@@ -582,6 +584,7 @@ export function createStore(boot) {
                         labels: [...(it.labels ?? [])],
                         custom_fields: { ...(it.custom_fields ?? {}) },
                         decision: it.status === 'created' ? 'accepted' : it.status === 'discarded' ? 'rejected' : null,
+                        similar: [], similarKey: null, dupIds: '', dupAck: false, // look-alikes of this proposal (client only)
                     })),
                 };
                 [...new Set(this.batchItems(m).map((it) => it.project).filter(Boolean))].forEach((p) => this.loadMeta(p));
@@ -633,6 +636,12 @@ export function createStore(boot) {
                     get valid() {
                         return this.missing.length === 0;
                     },
+                    get similarIssues() {
+                        return row()?.similar ?? [];
+                    },
+                    get duplicates() {
+                        return this.similarIssues.filter((x) => x.duplicate);
+                    },
                     setField(field, value) {
                         if (field === 'project') self.batchSetProject(row(), value ?? '');
                         else row()[field] = value;
@@ -658,19 +667,58 @@ export function createStore(boot) {
             row.custom_fields = {};
             this.loadMeta(project);
         },
-        /** Approving needs the required fields; rejecting is always possible. */
-        batchCanDecide(m, i, decision) {
-            if (decision === 'accepted' && this.batchMissing(this.batchState(m).rows[i]).length) {
+        /** Look-alikes of a proposal as currently edited, after a pause in typing (shown in its card). */
+        batchWatchSimilar(m, i) {
+            const row = this.batchState(m).rows[i];
+            if (!row || row.status !== 'pending') return;
+            const key = `${row.project}|${row.summary}|${String(row.description ?? '').trim().slice(0, 1500)}`;
+            clearTimeout(batchSimilarTimer);
+            if (!row.project || !String(row.summary ?? '').trim() || row.similarKey === key) return;
+            batchSimilarTimer = setTimeout(() => this.batchRefreshSimilar(m, i), 800);
+        },
+        /** Same check without the pause: approving must not rely on a look-up that is still pending. */
+        async batchRefreshSimilar(m, i) {
+            const row = this.batchState(m).rows[i];
+            if (!row || row.status !== 'pending' || !row.project || !String(row.summary ?? '').trim()) return;
+            clearTimeout(batchSimilarTimer);
+            const description = String(row.description ?? '').trim().slice(0, 1500);
+            try {
+                const res = await api('GET', `/api/conversations/${this.activeId}/messages/${m.id}/batch/${i}/similar?` + new URLSearchParams({ summary: row.summary, project: row.project, description }));
+                row.similar = res.issues ?? [];
+                row.similarKey = `${row.project}|${row.summary}|${description}`;
+                // an acknowledgement only counts for the duplicates it was given for
+                const ids = row.similar.filter((x) => x.duplicate).map((x) => x.id).join(',');
+                if (ids !== row.dupIds) {
+                    row.dupIds = ids;
+                    row.dupAck = false;
+                }
+            } catch (_) {
+                // only a warning: if it cannot be checked, approving is still possible
+            }
+        },
+        /** Approving needs the required fields and, for a probable duplicate, an explicit "this is not a duplicate"; rejecting is always possible. */
+        async batchCanDecide(m, i, decision) {
+            const st = this.batchState(m);
+            if (st.busy) return false;
+            if (decision !== 'accepted') return true;
+            const row = st.rows[i];
+            if (this.batchMissing(row).length) {
                 this.notify(this.t('batch.missing'), 'error');
 
                 return false;
             }
+            await this.batchRefreshSimilar(m, i);
+            if (row.similar.some((x) => x.duplicate) && !row.dupAck) {
+                this.notify(this.t('batch.duplicate_blocked'), 'error');
 
-            return !this.batchState(m).busy;
+                return false;
+            }
+
+            return true;
         },
         batchDecide(m, i, decision) {
-            if (!this.batchCanDecide(m, i, decision)) return false;
             const st = this.batchState(m);
+            if (st.busy) return false;
             st.rows[i].decision = decision;
             if (st.viewing === i) st.viewing = null;
             st.history = [...st.history.filter((x) => x !== i), i];
@@ -929,9 +977,10 @@ export function createStore(boot) {
             return this.draft && this.missing.length === 0;
         },
         // ---- similar issues (duplicate warning) --------------------------
-        watchSimilar(summary, project) {
+        watchSimilar(summary, project, description = '') {
             clearTimeout(similarTimer);
-            const key = `${project}|${summary}`;
+            const text = String(description ?? '').trim().slice(0, 1500);
+            const key = `${project}|${summary}|${text}`;
             if (!this.activeId || !this.draft || this.draft.issue_key || !project || !String(summary ?? '').trim()) {
                 this.similarKey = null;
                 this.similarIssues = [];
@@ -941,7 +990,7 @@ export function createStore(boot) {
             const id = this.activeId;
             similarTimer = setTimeout(async () => {
                 try {
-                    const res = await api('GET', `/api/conversations/${id}/draft/similar?` + new URLSearchParams({ summary, project }));
+                    const res = await api('GET', `/api/conversations/${id}/draft/similar?` + new URLSearchParams({ summary, project, description: text }));
                     if (id !== this.activeId || !this.draft) return;
                     this.similarKey = key;
                     this.similarIssues = res.issues ?? [];
@@ -949,6 +998,24 @@ export function createStore(boot) {
                     this.similarIssues = [];
                 }
             }, 800);
+        },
+        /** Look-alikes right now (no debounce): the confirmation must not rely on a check that may still be pending. */
+        async refreshSimilar() {
+            const d = this.draft;
+            if (!this.activeId || !d || d.issue_key || !d.project || !String(d.summary ?? '').trim()) return;
+            clearTimeout(similarTimer);
+            const text = String(d.description ?? '').trim().slice(0, 1500);
+            try {
+                const res = await api('GET', `/api/conversations/${this.activeId}/draft/similar?` + new URLSearchParams({ summary: d.summary, project: d.project, description: text }));
+                this.similarKey = `${d.project}|${d.summary}|${text}`;
+                this.similarIssues = res.issues ?? [];
+            } catch (_) {
+                // only a warning: if it cannot be checked, creating is still possible
+            }
+        },
+        /** Look-alikes whose title is (nearly) the same: creating needs an explicit "this is not a duplicate". */
+        get duplicates() {
+            return this.draft?.issue_key ? [] : this.similarIssues.filter((i) => i.duplicate);
         },
         setField(field, value) {
             if (!this.draft) return;
@@ -1012,6 +1079,8 @@ export function createStore(boot) {
         async openConfirm() {
             await this.flushDraft();
             if (!this.valid) return;
+            await this.refreshSimilar();
+            this.dupAck = false;
             this.simulateError = false;
             this.confirmOpen = true;
         },

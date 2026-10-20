@@ -39,6 +39,7 @@ Route::middleware('auth')->group(function () {
         Route::post('/conversations/{conversation}/turn', TurnController::class)->whereNumber('conversation');
         Route::patch('/conversations/{conversation}/draft', [DraftController::class, 'update'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/messages/{message}/batch', BatchController::class)->whereNumber(['conversation', 'message'])->middleware('throttle:20,1');
+        Route::get('/conversations/{conversation}/messages/{message}/batch/{index}/similar', [BatchController::class, 'similar'])->whereNumber(['conversation', 'message', 'index'])->middleware('throttle:60,1');
         Route::post('/conversations/{conversation}/issues/update', IssueEditController::class)->whereNumber('conversation');
         Route::get('/conversations/{conversation}/draft/similar', [DraftController::class, 'similar'])->whereNumber('conversation')->middleware('throttle:60,1');
         Route::post('/conversations/{conversation}/draft/create', [DraftController::class, 'create'])->whereNumber('conversation');

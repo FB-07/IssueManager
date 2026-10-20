@@ -1,6 +1,6 @@
 @props(['c' => 's', 'batch' => false])
 {{-- $c: JS expression of the object holding the draft (the store, or one proposal of a batch carousel) --}}
-<div class="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm" x-data="{ labelInput: '' }" @unless($batch) x-effect="s.watchSimilar(s.draft.summary, s.draft.project)" @endunless aria-label="Issue">
+<div class="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm" x-data="{ labelInput: '' }" @unless($batch) x-effect="s.watchSimilar(s.draft.summary, s.draft.project, s.draft.description)" @endunless aria-label="Issue">
 
     {{-- header --}}
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5">
@@ -72,18 +72,28 @@
         </div>
 
         {{-- possible duplicates --}}
-        <div class="rounded-xl border border-warn/30 bg-warn-soft px-3.5 py-3" x-show="s.similarIssues.length && {{ $c }}.draft.status !== 'created'" x-cloak role="status">
+        <div class="rounded-xl border border-warn/30 bg-warn-soft px-3.5 py-3" x-show="{{ $c }}.similarIssues.length && {{ $c }}.draft.status !== 'created'" x-cloak role="status" data-similar>
             <p class="flex items-center gap-2 text-xs font-medium text-warn"><x-ui.icon name="alert" class="size-3.5" /><span x-text="s.t('similar.title')"></span></p>
             <p class="mt-0.5 text-xs text-muted" x-text="s.t('similar.hint')"></p>
             <ul class="mt-2 space-y-1">
-                <template x-for="i in s.similarIssues" x-bind:key="i.id">
-                    <li class="flex items-baseline gap-2 text-sm">
-                        <a class="shrink-0 font-medium text-accent hover:underline" x-bind:href="i.url" target="_blank" rel="noopener" x-text="i.id"></a>
-                        <span class="min-w-0 truncate" x-text="i.summary"></span>
-                        <span class="badge ml-auto shrink-0 bg-surface-3 text-muted" x-show="i.state" x-text="s.lbl('state', i.state)"></span>
+                <template x-for="i in {{ $c }}.similarIssues" x-bind:key="i.id">
+                    <li>
+                        <a x-bind:href="i.url" target="_blank" rel="noopener" x-bind:title="s.t('similar.open')" x-bind:aria-label="s.t('similar.open') + ': ' + i.id + ' ' + i.summary"
+                           class="group -mx-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent">
+                            <span class="shrink-0 font-medium text-accent" x-text="i.id"></span>
+                            <span class="min-w-0 flex-1 truncate group-hover:underline" x-text="i.summary"></span>
+                            <span class="badge shrink-0 bg-surface-3 text-muted" x-show="i.state" x-text="s.lbl('state', i.state)"></span>
+                            <x-ui.icon name="external" class="size-3.5 shrink-0 text-muted transition group-hover:text-accent" />
+                        </a>
                     </li>
                 </template>
             </ul>
+            @if($batch)
+                <label class="mt-3 flex cursor-pointer items-start gap-2.5 text-sm" x-show="{{ $c }}.duplicates.length">
+                    <input type="checkbox" class="mt-0.5 size-4 accent-[var(--accent)]" x-model="{{ $c }}.draft.dupAck">
+                    <span x-text="s.t('similar.ack')"></span>
+                </label>
+            @endif
         </div>
 
         {{-- properties --}}

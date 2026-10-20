@@ -85,6 +85,8 @@ return [
     ],
 
     'similar' => [
+        'open' => 'Abrir no YouTrack',
+        'confirm_title' => 'Já existem issues parecidos', 'confirm_dup' => 'Isto parece um duplicado', 'ack' => 'Verifiquei: não é um duplicado', 'create_anyway' => 'Criar mesmo assim',
         'title' => 'Já existem issues semelhantes',
         'hint' => 'Confirma estas antes de criar uma duplicada.',
     ],
@@ -132,6 +134,7 @@ return [
     ],
 
     'batch' => [
+        'duplicate_blocked' => 'Isto parece um duplicado. Marca "Verifiquei: não é um duplicado" para aprovar.',
         'approve' => 'Aprovar', 'reject' => 'Rejeitar', 'back' => 'Anular a última decisão', 'close' => 'Fechar', 'remaining' => 'Faltam :n para rever', 'all_reviewed' => 'Tudo revisto', 'finished' => 'Concluído', 'summary' => ':a aprovados · :r rejeitados', 'accepted_title' => 'Aprovados (:n)', 'finish' => 'Concluir',
         'counter' => 'Issue :i de :n', 'prev' => 'Anterior', 'next' => 'Seguinte', 'include' => 'Incluir', 'created' => 'Criado', 'discarded' => 'Descartado',
         'title' => ':n issues propostos', 'hint' => 'Marca os que queres criar. Clica no título para editar. Nada é criado sem a tua aprovação.',

@@ -49,6 +49,31 @@
                 <div class="contents"><dt class="text-muted" x-text="s.t('fields.' + f)"></dt><dd class="break-words font-medium" x-text="f === 'type' || f === 'priority' ? s.lbl(f, s.draft?.[f]) : s.draft?.[f]"></dd></div>
             </template>
         </dl>
+        {{-- look-alikes: a warning, and for probable duplicates an explicit acknowledgement --}}
+        <div class="rounded-xl border px-3.5 py-3" x-show="s.similarIssues.length && !s.draft?.issue_key" x-cloak role="alert"
+             x-bind:class="s.duplicates.length ? 'border-danger/40 bg-danger-soft' : 'border-warn/30 bg-warn-soft'">
+            <p class="flex items-center gap-2 text-sm font-medium" x-bind:class="s.duplicates.length ? 'text-danger' : 'text-warn'">
+                <x-ui.icon name="alert" class="size-4 shrink-0" /><span x-text="s.duplicates.length ? s.t('similar.confirm_dup') : s.t('similar.confirm_title')"></span>
+            </p>
+            <p class="mt-0.5 text-xs text-muted" x-text="s.t('similar.hint')"></p>
+            <ul class="mt-2 space-y-1.5">
+                <template x-for="i in s.similarIssues" x-bind:key="i.id">
+                    <li>
+                        <a x-bind:href="i.url" target="_blank" rel="noopener" x-bind:title="s.t('similar.open')" x-bind:aria-label="s.t('similar.open') + ': ' + i.id + ' ' + i.summary"
+                           class="group -mx-2 flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition hover:bg-surface/70 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent">
+                            <span class="shrink-0 font-medium text-accent" x-text="i.id"></span>
+                            <span class="min-w-0 flex-1 truncate group-hover:underline" x-text="i.summary"></span>
+                            <span class="badge shrink-0 bg-surface-3 text-muted" x-show="i.state" x-text="s.lbl('state', i.state)"></span>
+                            <x-ui.icon name="external" class="size-3.5 shrink-0 text-muted transition group-hover:text-accent" />
+                        </a>
+                    </li>
+                </template>
+            </ul>
+            <label class="mt-3 flex cursor-pointer items-start gap-2.5 text-sm" x-show="s.duplicates.length">
+                <input type="checkbox" class="mt-0.5 size-4 accent-[var(--accent)]" x-model="s.dupAck">
+                <span x-text="s.t('similar.ack')"></span>
+            </label>
+        </div>
         <p class="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn" x-show="s.demo"><x-ui.icon name="alert" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('confirm.demo_warning')"></span></p>
         <p class="flex items-start gap-2 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent" x-show="!s.demo"><x-ui.icon name="check-circle" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('confirm.live_warning')"></span></p>
         <label class="flex cursor-pointer items-center gap-2.5 text-sm" x-show="s.demo">
@@ -57,7 +82,8 @@
         </label>
         <div class="flex justify-end gap-2">
             <button type="button" class="btn" @click="s.confirmOpen = false" x-text="s.t('common.cancel')"></button>
-            <button type="button" class="btn btn-primary" @click="s.confirmCreate()" x-text="s.t('confirm.confirm')"></button>
+            <button type="button" class="btn btn-primary" @click="s.confirmCreate()" x-bind:disabled="s.duplicates.length > 0 && !s.dupAck"
+                    x-text="s.similarIssues.length && !s.draft?.issue_key ? s.t('similar.create_anyway') : s.t('confirm.confirm')"></button>
         </div>
     </div>
 </x-ui.modal>

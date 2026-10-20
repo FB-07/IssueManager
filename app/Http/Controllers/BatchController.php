@@ -6,6 +6,7 @@ use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Models\IssueDraft;
 use App\Services\DraftPatch;
+use App\Services\SimilarIssues;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
 use Illuminate\Http\Request;
@@ -102,6 +103,19 @@ class BatchController extends Controller
         $c->touch();
 
         return ['message' => Presenter::message($m->fresh()->load('attachments'))];
+    }
+
+    /** Look-alikes of one proposal, from the text as currently edited in its card (nothing is saved until the batch is created). */
+    public function similar(Request $request, int $conversation, int $message, int $index, SimilarIssues $similar)
+    {
+        $m = $this->conversation($request, $conversation)->messages()->whereKey($message)->firstOrFail();
+        $item = $m->meta['batch']['items'][$index] ?? abort(404);
+        $q = $request->validate(['summary' => ['nullable', 'string', 'max:255'], 'project' => ['nullable', 'string', 'max:50'], 'description' => ['nullable', 'string', 'max:3000']]);
+        if (($item['status'] ?? null) !== 'pending') {
+            return ['issues' => []];
+        }
+
+        return ['issues' => $similar->find($q['project'] ?? $item['project'] ?? null, $q['summary'] ?? $item['summary'] ?? null, $q['description'] ?? $item['description'] ?? null)];
     }
 
     /** The stored proposal with the user's edits applied (only values valid for the project survive). */

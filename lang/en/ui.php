@@ -85,6 +85,8 @@ return [
     ],
 
     'similar' => [
+        'open' => 'Open in YouTrack',
+        'confirm_title' => 'Similar issues already exist', 'confirm_dup' => 'This looks like a duplicate', 'ack' => 'I checked: this is not a duplicate', 'create_anyway' => 'Create anyway',
         'title' => 'Similar issues already exist',
         'hint' => 'Check these before creating a duplicate.',
     ],
@@ -132,6 +134,7 @@ return [
     ],
 
     'batch' => [
+        'duplicate_blocked' => 'This looks like a duplicate. Tick "I checked: this is not a duplicate" to approve it.',
         'approve' => 'Approve', 'reject' => 'Reject', 'back' => 'Undo last decision', 'close' => 'Close', 'remaining' => ':n left to review', 'all_reviewed' => 'All reviewed', 'finished' => 'Done', 'summary' => ':a approved · :r rejected', 'accepted_title' => 'Approved (:n)', 'finish' => 'Finish',
         'counter' => 'Issue :i of :n', 'prev' => 'Previous', 'next' => 'Next', 'include' => 'Include', 'created' => 'Created', 'discarded' => 'Discarded',
         'title' => ':n proposed issues', 'hint' => 'Tick the ones to create. Click a title to edit it. Nothing is created until you approve.',

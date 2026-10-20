@@ -6,6 +6,7 @@ use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Models\IssueDraft;
 use App\Services\AttachmentUploader;
+use App\Services\SimilarIssues;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
 use Illuminate\Http\Request;
@@ -82,24 +83,16 @@ class DraftController extends Controller
         return Presenter::draft($draft);
     }
 
-    /** Look-alike issues for the draft title; a warning only, so any failure just yields an empty list. */
-    public function similar(Request $request, int $conversation, YouTrackClient $yt)
+    /** Look-alike issues for the draft (the live card text may not be saved yet, so the request can override it). */
+    public function similar(Request $request, int $conversation, SimilarIssues $similar)
     {
         $draft = $this->draft($request, $conversation);
-        $q = $request->validate(['summary' => ['nullable', 'string', 'max:255'], 'project' => ['nullable', 'string', 'max:50']]);
-        $project = $q['project'] ?? $draft->project; // the live card text may not be saved yet
-        $summary = $q['summary'] ?? $draft->summary;
-        if (filled($draft->issue_key) || blank($project) || blank($summary) || ! YouTrackClient::configured()) {
+        $q = $request->validate(['summary' => ['nullable', 'string', 'max:255'], 'project' => ['nullable', 'string', 'max:50'], 'description' => ['nullable', 'string', 'max:3000']]);
+        if (filled($draft->issue_key)) {
             return ['issues' => []];
         }
 
-        try {
-            $issues = $yt->similar($project, $summary);
-        } catch (TrackerException) {
-            return ['issues' => []];
-        }
-
-        return ['issues' => array_map(fn ($i) => ['id' => $i['id'], 'summary' => $i['summary'], 'state' => $i['state'], 'url' => $i['url']], $issues)];
+        return ['issues' => $similar->find($q['project'] ?? $draft->project, $q['summary'] ?? $draft->summary, $q['description'] ?? $draft->description)];
     }
 
     /** Explicit, user-confirmed creation in YouTrack (or update of the issue created from this draft). */

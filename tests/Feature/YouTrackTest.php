@@ -109,3 +109,48 @@ it('lists look-alike issues for a draft title without failing the draft when You
 
     $this->getJson("/api/conversations/$conv/draft/similar?project=DEV&summary=outro+titulo")->assertOk()->assertJsonCount(0, 'issues');
 });
+
+it('flags look-alikes whose title is (nearly) the same as probable duplicates', function () {
+    config(['services.youtrack.title_prefix' => 'IssueTesteFabio']);
+    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
+    $row = fn ($n, $title) => ['id' => "2-$n", 'idReadable' => "DEV-$n", 'summary' => $title, 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+    Http::fake(['yt.test/api/issues?*' => Http::response([
+        $row(1, 'IssueTesteFabio - Erro no pagamento multibanco'),
+        $row(2, 'Pagamento multibanco com erro intermitente em produção'),
+    ])]);
+
+    $res = $this->getJson("/api/conversations/{$conv->id}/draft/similar?project=DEV&summary=Erro+no+pagamento+multibanco")->assertOk();
+
+    $res->assertJsonPath('issues.0.duplicate', true)->assertJsonPath('issues.0.match', 100)
+        ->assertJsonPath('issues.1.duplicate', false);
+    expect($res->json('issues.1.match'))->toBeLessThan(80);
+});
+
+it('also flags a differently titled issue whose description is (nearly) the same, and searches the description words too', function () {
+    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
+    $text = 'Ao carregar no botão pagar com cartão multibanco o ecrã bloqueia e nunca confirma o pagamento do cliente';
+    $row = fn ($n, $title, $desc) => ['id' => "2-$n", 'idReadable' => "DEV-$n", 'summary' => $title, 'description' => $desc, 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+    Http::fake(['yt.test/api/issues?*' => Http::sequence()
+        ->push([$row(1, 'Checkout bloqueado', 'Texto totalmente diferente sobre faturas, impostos e relatórios mensais do departamento financeiro')])
+        ->push([$row(2, 'Pagamento multibanco bloqueado', $text.' em produção')])]);
+
+    $res = $this->getJson("/api/conversations/{$conv->id}/draft/similar?".http_build_query(['project' => 'DEV', 'summary' => 'Pagamento multibanco bloqueia ecrã', 'description' => $text]))->assertOk();
+
+    // the second search (description words) found an issue the title search missed
+    expect(Http::recorded(fn ($r) => str_contains($r->url(), 'api/issues?'))->count())->toBe(2);
+    $res->assertJsonCount(2, 'issues')
+        ->assertJsonPath('issues.0.id', 'DEV-2')->assertJsonPath('issues.0.duplicate', true)
+        ->assertJsonPath('issues.1.id', 'DEV-1')->assertJsonPath('issues.1.duplicate', false);
+    expect($res->json('issues.0.description_match'))->toBeGreaterThanOrEqual(70)->and($res->json('issues.0.title_match'))->toBeLessThan(80);
+});
+
+it('does not flag a short description as a duplicate by itself', function () {
+    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
+    Http::fake(['yt.test/api/issues?*' => Http::response([['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Outra coisa', 'description' => 'curto', 'project' => ['shortName' => 'DEV'], 'customFields' => []]])]);
+
+    $this->getJson("/api/conversations/{$conv->id}/draft/similar?project=DEV&summary=Erro+no+pagamento&description=curto")->assertOk()
+        ->assertJsonPath('issues.0.duplicate', false)->assertJsonPath('issues.0.description_match', null);
+});

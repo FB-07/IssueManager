@@ -10,8 +10,13 @@
                 get left() { return s.batchPending(m).filter((r) => !r.decision).length },
                 // the card is thrown out by itself (right = approved, left = rejected), then the next one rises into place
                 async go(decision) {
-                    if (this.busy || !s.batchCanDecide(m, this.ci, decision)) return;
+                    if (this.busy) return;
                     this.busy = true;
+                    if (!(await s.batchCanDecide(m, this.ci, decision))) {
+                        this.busy = false;
+                        this.$nextTick(() => this.$refs.deck?.querySelector('[data-similar]')?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+                        return;
+                    }
                     this.fly = decision === 'accepted' ? 1 : -1;
                     await new Promise((r) => setTimeout(r, window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 380));
                     s.batchDecide(m, this.ci, decision);
@@ -19,7 +24,7 @@
                     this.busy = false;
                     this.$nextTick(() => this.$refs.deck?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
                 },
-             }">
+             }" x-effect="s.batchWatchSimilar(m, ci)">
             <div class="relative pb-4">
                 {{-- cards waiting underneath --}}
                 <template x-if="b.viewing === null && left > 1">

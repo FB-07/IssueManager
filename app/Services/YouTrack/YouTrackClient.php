@@ -188,16 +188,44 @@ class YouTrackClient
      *
      * @return list<array<string,mixed>>
      */
-    public function similar(string $project, string $summary, int $limit = 5): array
+    public function similar(string $project, string $summary, int $limit = 5, ?string $description = null): array
     {
-        $words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($this->stripPrefix($summary)), -1, PREG_SPLIT_NO_EMPTY);
-        $keywords = array_slice(array_values(array_unique(array_filter($words, fn ($w) => mb_strlen($w) >= 3 && ! in_array($w, self::STOPWORDS, true)))), 0, 6);
-        if (! $keywords) {
-            return [];
-        }
-        $query = $this->buildQuery(['project' => $project, 'q' => implode(' ', $keywords)]);
+        $keywords = array_slice($this->keywords($summary), 0, 6);
+        $found = [];
+        $add = function (string $query) use (&$found, $limit) {
+            $rows = Cache::remember($this->cacheKey('similar.'.md5($query.$limit)), 60, fn () => $this->search($query, 1, $limit, false)['issues']);
+            foreach ($rows as $row) {
+                $found[$row['id']] ??= $row;
+            }
 
-        return Cache::remember($this->cacheKey('similar.'.md5($query.$limit)), 60, fn () => $this->search($query, 1, $limit, false)['issues']);
+            return $rows !== [];
+        };
+
+        if ($keywords) {
+            $add($this->buildQuery(['project' => $project, 'q' => implode(' ', $keywords)]));
+        }
+
+        // an older issue about the same thing may be titled differently: also look for the draft's longest description words,
+        // loosening (4, then 3 words that must all appear) because the same idea is rarely worded identically
+        $fromText = $this->keywords((string) $description);
+        if (count($fromText) >= 5) {
+            usort($fromText, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+            foreach ([4, 3] as $n) {
+                if ($add($this->buildQuery(['project' => $project, 'q' => implode(' ', array_slice($fromText, 0, $n))]))) {
+                    break;
+                }
+            }
+        }
+
+        return array_values($found);
+    }
+
+    /** @return list<string> distinctive words of a text (3+ letters, no stop words), in order of appearance */
+    private function keywords(string $text): array
+    {
+        $words = preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($this->stripPrefix($text)), -1, PREG_SPLIT_NO_EMPTY);
+
+        return array_values(array_unique(array_filter($words, fn ($w) => mb_strlen($w) >= 3 && ! in_array($w, self::STOPWORDS, true))));
     }
 
     private function stripPrefix(string $summary): string

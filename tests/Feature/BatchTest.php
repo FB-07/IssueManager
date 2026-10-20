@@ -94,3 +94,30 @@ it("does not let another user touch someone else's batch", function () {
     $this->postJson("/api/conversations/$cid/messages/{$msg['id']}/batch", ['create' => [['index' => 0]]])->assertNotFound();
     expect(Message::find($msg['id'])->meta['batch']['items'][0]['status'])->toBe('pending');
 });
+
+it('lists look-alikes of one proposal from its live text and flags probable duplicates', function () {
+    ($this->fakeYouTrack)();
+    [$cid, $msg] = batchTurn($this, [batchProposal(['summary' => 'Erro no pagamento multibanco']), batchProposal(['summary' => 'Outro'])]);
+    Http::swap(new \Illuminate\Http\Client\Factory); // the first stubs registered win, so start from a clean fake
+    Http::fake(['yt.test/api/issues?*' => Http::response([
+        ['id' => '2-9', 'idReadable' => 'DEV-9', 'summary' => 'Erro no pagamento multibanco', 'description' => '', 'project' => ['shortName' => 'DEV'], 'customFields' => []],
+        ['id' => '2-8', 'idReadable' => 'DEV-8', 'summary' => 'Pagamento multibanco com erro intermitente em produção', 'description' => '', 'project' => ['shortName' => 'DEV'], 'customFields' => []],
+    ])]);
+
+    $res = $this->getJson("/api/conversations/$cid/messages/{$msg['id']}/batch/0/similar?".http_build_query(['project' => 'DEV', 'summary' => 'Erro no pagamento multibanco']))->assertOk();
+
+    $res->assertJsonPath('issues.0.id', 'DEV-9')->assertJsonPath('issues.0.duplicate', true)->assertJsonPath('issues.1.duplicate', false);
+
+    $this->getJson("/api/conversations/$cid/messages/{$msg['id']}/batch/7/similar?summary=x&project=DEV")->assertNotFound();
+});
+
+it('does not look for look-alikes of a proposal that is already decided, nor for another user', function () {
+    ($this->fakeYouTrack)();
+    [$cid, $msg] = batchTurn($this, [batchProposal()]);
+    $this->postJson("/api/conversations/$cid/messages/{$msg['id']}/batch", ['discard' => [0]])->assertOk();
+
+    $this->getJson("/api/conversations/$cid/messages/{$msg['id']}/batch/0/similar?summary=Corrigir+login&project=DEV")->assertOk()->assertJsonCount(0, 'issues');
+
+    $this->actingAs(yt_user('other', ['email' => 'other@example.com']));
+    $this->getJson("/api/conversations/$cid/messages/{$msg['id']}/batch/0/similar?summary=x&project=DEV")->assertNotFound();
+});
