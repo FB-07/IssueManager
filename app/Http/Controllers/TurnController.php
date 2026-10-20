@@ -6,6 +6,7 @@ use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Services\DraftPatch;
 use App\Services\QuickReplies;
+use App\Services\SimilarIssues;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
 use Illuminate\Http\Request;
@@ -19,7 +20,7 @@ class TurnController extends Controller
 
     private const MIMES = 'png,jpg,jpeg,gif,webp,pdf,txt,md,log,json,csv,zip,doc,docx,xls,xlsx,php,js,ts,css,html,vue,sql,yml,yaml';
 
-    public function __invoke(Request $request, int $conversation, YouTrackClient $yt)
+    public function __invoke(Request $request, int $conversation, YouTrackClient $yt, SimilarIssues $similar)
     {
         $c = $this->conversation($request, $conversation);
 
@@ -58,7 +59,7 @@ class TurnController extends Controller
             $patch = null; // a batch replaces the single draft for this turn
         }
 
-        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch) {
+        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch, $similar) {
             $user = $c->messages()->create(['role' => 'user', 'kind' => 'text', 'body' => $text]);
 
             foreach ($request->file('files', []) as $file) {
@@ -92,6 +93,15 @@ class TurnController extends Controller
             // `direct` = draft mode off and the user explicitly asked for an issue: no editable card when the draft is
             // complete (the app creates it right away); an incomplete draft still shows the card so it can be filled in
             $direct = $patch && ! empty($reply['direct']) && $draft->missingFields() === [];
+
+            // no confirmation window in this mode, so a probable duplicate must not be created behind the user's back:
+            // the editable card is shown instead (with the look-alikes) and the user decides
+            $held = $direct && blank($draft->issue_key)
+                && collect($similar->find($draft->project, $draft->summary, $draft->description))->contains('duplicate', true);
+            if ($held) {
+                $direct = false;
+                $reply['text'] = rtrim($reply['text'])."\n\n".__('ui.chat.duplicate_held');
+            }
 
             // like the single issue card, every file sent in the conversation (this message's or an earlier one's) is ticked
             // for each proposal; the user unticks what a given issue should not carry

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Exceptions\TrackerException;
 use App\Services\YouTrack\YouTrackClient;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Look-alike issues for an issue about to be created. Each one gets a title match and, when both sides have a description,
@@ -39,6 +40,11 @@ class SimilarIssues
         try {
             $issues = $this->yt->similar($project, $summary, self::CANDIDATES, $description);
         } catch (TrackerException) {
+            return [];
+        } catch (\Throwable $e) {
+            // an unexpected answer from the tracker must never break the request that only wanted a warning
+            Log::warning('Similar issues lookup failed', ['message' => $e->getMessage()]);
+
             return [];
         }
 
