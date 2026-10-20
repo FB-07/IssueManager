@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Conversation extends Model
 {
-    protected $fillable = ['user_id', 'owner', 'title'];
+    protected $fillable = ['user_id', 'owner', 'title', 'issue_key', 'issue_summary'];
 
     public function messages(): HasMany
     {

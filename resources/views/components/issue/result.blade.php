@@ -61,5 +61,10 @@
             </div>
         </details>
 
+        {{-- what next: start over, or keep talking about this issue (it is the chat's context) --}}
+        <div class="mt-4 flex flex-wrap gap-2" x-show="m.id === s.messages.at(-1)?.id && !m.meta.dismissed && !s.processing">
+            <button type="button" class="btn btn-primary" @click="s.newChat()"><x-ui.icon name="plus" /><span x-text="s.t('result.new_chat')"></span></button>
+            <button type="button" class="btn" @click="s.continueConversation(m)"><x-ui.icon name="message" /><span x-text="s.t('result.continue')"></span></button>
+        </div>
     </div>
 </div>

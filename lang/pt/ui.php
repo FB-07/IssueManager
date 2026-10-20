@@ -4,15 +4,18 @@ return [
     'app' => ['live_badge' => 'YouTrack ligado', 'name' => 'IssueManager', 'demo_badge' => 'YouTrack simulado'],
 
     'login' => [
+        'domain_only' => 'A conta :email não pode entrar: só são aceites contas @:domain.',
+        'previous' => 'Última conta usada', 'continue_as' => 'Continuar como :name', 'other_account' => 'Usar outra conta', 'remove_account' => 'Remover :name da lista',
+        'forget_note' => 'Só guarda o nome e o email neste browser; nunca palavras-passe nem tokens.',
+        'wrong_account' => 'Entraste no YouTrack com :got, mas escolheste :expected. Escolhe "Usar outra conta" para entrar com a conta certa.',
         'no_youtrack' => 'A tua conta entrou no Hub mas não tem acesso ao YouTrack. Pede ao administrador para dar à Service IssueManager o scope "YouTrack".',
         'title' => 'Entrar',
         'subtitle' => 'Inicia sessão com a tua conta YouTrack para aceder às tuas conversas e criar Issues.',
         'button' => 'Entrar com YouTrack',
-        'invite_only' => 'Acesso apenas por convite.',
+        'domain_note' => 'Acesso reservado a contas @:domain.',
         'not_configured' => 'O login com o YouTrack não está configurado (YOUTRACK_CLIENT_ID e YOUTRACK_CLIENT_SECRET).',
         'failed' => 'Não foi possível iniciar sessão com o YouTrack. Tenta novamente.',
         'cancelled' => 'O início de sessão foi cancelado.',
-        'not_invited' => 'A conta :email não tem acesso. Pede um convite ao administrador.',
         'dev' => 'Entrar como utilizador de desenvolvimento',
     ],
 
@@ -135,6 +138,14 @@ return [
         'confirm' => 'Confirmar',
     ],
 
+    'context' => [
+        'title' => 'Contexto', 'change' => 'Trocar', 'remove' => 'Remover contexto', 'use' => 'Usar',
+        'placeholder' => 'Diz o que alterar em :key, ou descreve outro issue…',
+        'pick_hint' => 'Escolher o issue a que este chat se refere',
+        'picker_hint' => 'Escolhe o issue deste chat. Depois podes dizer "altera…" ou "fecha o issue" e o Claude aplica-o a ele.',
+        'linked' => 'Chat associado a :key.',
+    ],
+
     'batch' => [
         'attachments_one' => '1 anexo',
         'attachments_count' => ':n anexos', 'attachments_hint' => 'Os ficheiros marcados são anexados a este issue quando for criado.',
@@ -150,6 +161,7 @@ return [
     ],
 
     'result' => [
+        'new_chat' => 'Nova conversa', 'continue' => 'Continuar esta conversa',
         'attachments' => 'Anexos enviados', 'attachments_failed' => 'Não foi possível anexar: :names',
         'changes' => 'Alterado',
         'preview' => 'Pré-visualização',

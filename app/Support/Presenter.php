@@ -11,7 +11,11 @@ class Presenter
 {
     public static function conversation(Conversation $c): array
     {
-        return ['id' => $c->id, 'title' => $c->title, 'updated_at' => $c->updated_at?->toIso8601String()];
+        return [
+            'id' => $c->id, 'title' => $c->title, 'updated_at' => $c->updated_at?->toIso8601String(),
+            // the issue this chat is about: "change it", "close it" mean this one
+            'context' => $c->issue_key ? ['key' => $c->issue_key, 'summary' => $c->issue_summary, 'url' => config('services.youtrack.url').'/issue/'.$c->issue_key] : null,
+        ];
     }
 
     public static function message(Message $m): array

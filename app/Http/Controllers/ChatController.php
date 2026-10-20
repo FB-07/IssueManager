@@ -8,6 +8,7 @@ use App\Services\QuickReplies;
 use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -39,6 +40,8 @@ class ChatController extends Controller
             'p.draft_enabled' => ['boolean'],
             'p.draft' => ['nullable', 'array'],
             'p.catalog' => ['nullable', 'array'],
+            'p.context' => ['nullable', 'array'],
+            'p.context.key' => ['nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.]+(-[A-Za-z0-9_.]+)*-\d+$/'],
             'files' => ['array', 'max:10'],
             'files.*' => ['file', 'max:10240'],
         ]);
@@ -47,6 +50,8 @@ class ChatController extends Controller
         }
 
         $draftOn = (bool) ($payload['draft_enabled'] ?? false);
+        $context = $this->contextIssue($payload['context']['key'] ?? null);
+        $who = $this->whoIsTalking($request);
         $messages = $this->buildMessages($payload['messages'], $request->file('files', []));
 
         $body = [
@@ -54,8 +59,8 @@ class ChatController extends Controller
             'max_tokens' => $cfg['max_tokens'],
             'stream' => true,
             'system' => $draftOn
-                ? ClaudePrompt::withDraft($payload['draft'] ?? null, $payload['catalog'] ?? [])
-                : ClaudePrompt::plain($payload['catalog'] ?? [], $payload['draft'] ?? null),
+                ? ClaudePrompt::withDraft($payload['draft'] ?? null, $payload['catalog'] ?? [], $context, $who)
+                : ClaudePrompt::plain($payload['catalog'] ?? [], $payload['draft'] ?? null, $context, $who),
             'messages' => $messages,
         ];
         $yt = YouTrackClient::configured() ? app(YouTrackClient::class) : null;
@@ -65,6 +70,7 @@ class ChatController extends Controller
             $yt ? ClaudePrompt::updateIssueTool() : null,
             $yt ? ClaudePrompt::proposeIssuesTool() : null,
             $yt ? ClaudePrompt::findIssuesTool() : null,
+            $yt ? ClaudePrompt::countIssuesTool() : null,
             $yt ? ClaudePrompt::getIssueTool() : null,
         ]));
 
@@ -73,6 +79,58 @@ class ChatController extends Controller
             'Cache-Control' => 'no-cache, no-transform',
             'X-Accel-Buffering' => 'no',
         ]);
+    }
+
+    /**
+     * The YouTrack account behind this session (name and login as YouTrack knows them, cached for a while); if YouTrack cannot be
+     * asked, the app's own record of the user. The local dev user acts as the owner of the shared token, so its fake email is left out.
+     *
+     * @return array{name:?string,login:?string,email:?string}
+     */
+    private function whoIsTalking(Request $request): array
+    {
+        $user = $request->user();
+        $email = $user->email === AuthController::DEV_EMAIL ? null : $user->email;
+        $me = [];
+
+        if (YouTrackClient::configured()) {
+            try {
+                $me = Cache::remember('yt.'.$user->id.'.me', 600, fn () => app(YouTrackClient::class)->me());
+            } catch (TrackerException) {
+                $me = [];
+            }
+        }
+
+        return [
+            'name' => $me['fullName'] ?? ($user->email === AuthController::DEV_EMAIL ? null : $user->name),
+            'login' => $me['login'] ?? null,
+            'email' => $email,
+        ];
+    }
+
+    /**
+     * The chat's context issue with its fields as they are in YouTrack right now (it may have been changed there meanwhile).
+     * If it cannot be read, Claude still gets the key, so "close it" still targets the right issue.
+     *
+     * @return ?array<string,mixed>
+     */
+    private function contextIssue(?string $key): ?array
+    {
+        if (blank($key)) {
+            return null;
+        }
+        if (! YouTrackClient::configured()) {
+            return ['key' => $key];
+        }
+
+        try {
+            $issue = app(YouTrackClient::class)->getIssue($key);
+            $issue['description'] = mb_substr((string) $issue['description'], 0, 3000);
+
+            return ['key' => $key] + array_intersect_key($issue, array_flip(['summary', 'description', 'project', 'type', 'priority', 'assignee', 'state']));
+        } catch (TrackerException) {
+            return ['key' => $key];
+        }
     }
 
     /** @param list<UploadedFile> $files */
@@ -115,7 +173,7 @@ class ChatController extends Controller
 
     /**
      * Streams the model's answer. Tools the app applies itself (draft, create, update) become SSE events; the lookup
-     * tools (find_issues / get_issue) are run here and the model continues with their result (a few rounds at most).
+     * tools (find_issues / count_issues / get_issue) are run here and the model continues with their result (a few rounds at most).
      */
     private function relay(array $cfg, array $body, ?YouTrackClient $yt): void
     {
@@ -128,7 +186,7 @@ class ChatController extends Controller
         };
 
         try {
-            for ($round = 0; $round < 5; $round++) {
+            for ($round = 0; $round < 8; $round++) {
                 $result = $this->streamRound($cfg, $body, $emit);
                 if ($result === null) {
                     return; // an error event was already sent
@@ -269,14 +327,29 @@ class ChatController extends Controller
         }
     }
 
-    /** Result of find_issues / get_issue as a compact JSON string for the model. */
+    /** Result of find_issues / count_issues / get_issue as a compact JSON string for the model. */
     private function runLookup(YouTrackClient $yt, string $name, array $input): string
     {
         try {
-            if ($name === 'find_issues') {
-                $found = $yt->search($yt->buildQuery(['q' => (string) ($input['query'] ?? '')]), 1, 8, false)['issues'];
+            if ($name === 'count_issues') {
+                $query = $yt->buildQuery(['q' => (string) ($input['query'] ?? '')]);
+                $total = $yt->count($query);
 
-                return json_encode(array_map(fn ($i) => array_intersect_key($i, array_flip(['id', 'summary', 'project', 'type', 'priority', 'assignee', 'state'])), $found), JSON_UNESCAPED_UNICODE);
+                return json_encode($total === null
+                    ? ['error' => 'YouTrack could not count right now; try again or list the issues instead.']
+                    : ['query' => (string) ($input['query'] ?? ''), 'total' => $total], JSON_UNESCAPED_UNICODE);
+            }
+
+            if ($name === 'find_issues') {
+                $limit = max(1, min(50, (int) ($input['limit'] ?? 8)));
+                $page = max(1, (int) ($input['page'] ?? 1));
+                $res = $yt->search($yt->buildQuery(['q' => (string) ($input['query'] ?? '')]), $page, $limit, true);
+
+                return json_encode([
+                    'total' => $res['total'], // all matching issues, not only this page (null if YouTrack could not count)
+                    'page' => $page, 'shown' => count($res['issues']), 'has_more' => $res['has_more'],
+                    'issues' => array_map(fn ($i) => array_intersect_key($i, array_flip(['id', 'summary', 'project', 'type', 'priority', 'assignee', 'state'])), $res['issues']),
+                ], JSON_UNESCAPED_UNICODE);
             }
 
             $issue = $yt->getIssue((string) ($input['issue_id'] ?? ''));

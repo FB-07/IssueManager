@@ -17,7 +17,7 @@ function call_as(User $user, string $method, string $uri, array $data = [], arra
 beforeEach(function () {
     $this->a = yt_user();
     $this->b = yt_user();
-    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok', 'services.youtrack.title_prefix' => 'IssueTesteFabio']); // tests must not depend on the prefix chosen in .env
     Cache::flush();
     Storage::fake('local');
     Http::fake([

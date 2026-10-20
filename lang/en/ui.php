@@ -4,15 +4,18 @@ return [
     'app' => ['live_badge' => 'YouTrack connected', 'name' => 'IssueManager', 'demo_badge' => 'YouTrack simulated'],
 
     'login' => [
+        'domain_only' => 'The account :email cannot sign in: only @:domain accounts are accepted.',
+        'previous' => 'Last account used', 'continue_as' => 'Continue as :name', 'other_account' => 'Use another account', 'remove_account' => 'Remove :name from the list',
+        'forget_note' => 'Only the name and email are kept in this browser; never passwords or tokens.',
+        'wrong_account' => 'You are signed in to YouTrack as :got, but you chose :expected. Pick "Use another account" to sign in with the right one.',
         'no_youtrack' => 'Your account signed in to the Hub but has no access to YouTrack. Ask the administrator to grant the IssueManager service the "YouTrack" scope.',
         'title' => 'Sign in',
         'subtitle' => 'Sign in with your YouTrack account to access your conversations and create issues.',
         'button' => 'Sign in with YouTrack',
-        'invite_only' => 'Access by invitation only.',
+        'domain_note' => 'Access is limited to @:domain accounts.',
         'not_configured' => 'YouTrack login is not configured (YOUTRACK_CLIENT_ID and YOUTRACK_CLIENT_SECRET).',
         'failed' => 'Could not sign in with YouTrack. Please try again.',
         'cancelled' => 'Sign-in was cancelled.',
-        'not_invited' => 'The account :email does not have access. Ask the administrator for an invitation.',
         'dev' => 'Sign in as the development user',
     ],
 
@@ -135,6 +138,14 @@ return [
         'confirm' => 'Confirm',
     ],
 
+    'context' => [
+        'title' => 'Context', 'change' => 'Change', 'remove' => 'Remove context', 'use' => 'Use',
+        'placeholder' => 'Say what to change in :key, or describe another issue…',
+        'pick_hint' => 'Choose the issue this chat is about',
+        'picker_hint' => 'Choose this chat\'s issue. Then you can say "change…" or "close the issue" and Claude applies it to that one.',
+        'linked' => 'Chat linked to :key.',
+    ],
+
     'batch' => [
         'attachments_one' => '1 attachment',
         'attachments_count' => ':n attachments', 'attachments_hint' => 'The ticked files are added to this issue when it is created.',
@@ -150,6 +161,7 @@ return [
     ],
 
     'result' => [
+        'new_chat' => 'New chat', 'continue' => 'Continue this conversation',
         'attachments' => 'Attachments sent', 'attachments_failed' => 'Could not attach: :names',
         'changes' => 'Changed',
         'preview' => 'Preview',

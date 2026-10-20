@@ -30,7 +30,7 @@ it('sends guests to the login page and API callers get 401', function () {
     $this->get('/')->assertRedirect('/login');
     $this->getJson('/api/youtrack/projects')->assertUnauthorized();
     $this->postJson('/api/chat')->assertUnauthorized();
-    $this->get('/login')->assertOk()->assertSee('Entrar com YouTrack');
+    $this->get('/login')->assertOk()->assertSee('Entrar com YouTrack')->assertSee('contas @proside.pt');
 });
 
 it('redirects to the Hub with state and the registered redirect uri', function () {
@@ -42,7 +42,7 @@ it('redirects to the Hub with state and the registered redirect uri', function (
     expect(session('oauth_state'))->toBeString()->and($loc)->toContain(session('oauth_state'));
 });
 
-it('logs in an invited account, links it to the Hub id and claims legacy history', function () {
+it('logs in an existing account, links it to the Hub id and claims legacy history', function () {
     $user = User::factory()->create(['email' => 'Ana@Proside.pt', 'hub_id' => null]);
     $legacy = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     Conversation::create(['owner' => $legacy, 'title' => 'antiga']);
@@ -56,10 +56,39 @@ it('logs in an invited account, links it to the Hub id and claims legacy history
         ->and(Conversation::first()->user_id)->toBe($user->id);
 });
 
-it('denies accounts that were not invited', function () {
-    hub_login('hub-9', 'stranger@x.com')->assertRedirect('/login')->assertSessionHas('error');
-    $this->assertGuest();
+it('creates the user on the first login of an account of the allowed domain, without any invitation', function () {
     expect(User::count())->toBe(0);
+
+    hub_login('hub-5', 'Nova.Pessoa@PROSIDE.pt')->assertRedirect(route('home'));
+
+    $user = User::first();
+    expect(User::count())->toBe(1)->and($user->email)->toBe('nova.pessoa@proside.pt')->and($user->hub_id)->toBe('hub-5')->and($user->name)->toBe('Ana Silva');
+    $this->assertAuthenticatedAs($user);
+    expect(DB::table('youtrack_connections')->where('user_id', $user->id)->count())->toBe(1);
+
+    // the next login finds the same user instead of creating another one
+    auth()->logout();
+    hub_login('hub-5', 'nova.pessoa@proside.pt')->assertRedirect(route('home'));
+    expect(User::count())->toBe(1);
+});
+
+it('denies accounts outside the allowed domain, including look-alike domains and accounts without email', function () {
+    foreach (['stranger@x.com', 'ana@proside.pt.evil.com', 'ana@evilproside.pt', 'ana@sub.proside.pt', null] as $i => $email) {
+        hub_login("hub-$i", $email)->assertRedirect('/login')->assertSessionHas('error');
+        $this->assertGuest();
+    }
+    expect(User::count())->toBe(0)->and(DB::table('youtrack_connections')->count())->toBe(0);
+    expect(session('error'))->toContain('proside.pt');
+});
+
+it('honours a different allowed domain from the configuration', function () {
+    config(['issuemanager.allowed_domain' => 'outra.pt']);
+
+    hub_login('hub-1', 'ana@proside.pt')->assertRedirect('/login');
+    $this->assertGuest();
+
+    Http::swap(new \Illuminate\Http\Client\Factory); // the first stubs would win otherwise
+    hub_login('hub-2', 'ana@outra.pt')->assertRedirect(route('home'));
 });
 
 it('rejects a wrong state and a failed token exchange', function () {
@@ -90,13 +119,6 @@ it('stores theme and language per user and logs out', function () {
     $this->assertGuest();
 });
 
-it('invites and removes accounts from the command line', function () {
-    $this->artisan('issuemanager:invite', ['email' => 'New@Proside.pt', '--name' => 'New'])->assertSuccessful();
-    expect(User::where('email', 'new@proside.pt')->exists())->toBeTrue();
-    $this->artisan('issuemanager:invite', ['email' => 'new@proside.pt', '--remove' => true])->expectsConfirmation('Delete new@proside.pt and all their conversations?', 'yes')->assertSuccessful();
-    expect(User::count())->toBe(0);
-});
-
 it('always sends the redirect uri built from APP_URL, even if the page was opened over a different scheme', function () {
     config(['services.youtrack.redirect' => null, 'app.url' => 'http://issuemanager.test']);
 
@@ -121,4 +143,43 @@ it('refuses the login when the account has no access to YouTrack', function () {
 
     $this->assertGuest();
     expect($user->fresh()->youtrackConnection)->toBeNull();
+});
+
+it('asks the Hub for credentials again only when the user wants to use another account', function () {
+    expect($this->get('/auth/youtrack/redirect')->headers->get('Location'))->toContain('request_credentials=default');
+    expect($this->get('/auth/youtrack/redirect?other=1')->headers->get('Location'))->toContain('request_credentials=required');
+});
+
+it('refuses to sign in as a different account than the remembered one the user picked', function () {
+    User::factory()->create(['email' => 'ana@proside.pt']);
+    User::factory()->create(['email' => 'rui@proside.pt']);
+
+    // the user picked Rui on the login page, but the Hub session belongs to Ana
+    $this->get('/auth/youtrack/redirect?account=Rui@Proside.pt');
+    expect(session('oauth_expect'))->toBe('rui@proside.pt');
+
+    hub_login('hub-1', 'ana@proside.pt')->assertRedirect('/login')->assertSessionHas('error');
+    $this->assertGuest();
+    expect(session('error'))->toContain('ana@proside.pt')->toContain('rui@proside.pt')
+        ->and(DB::table('youtrack_connections')->count())->toBe(0);
+});
+
+it('signs in when the account matches the remembered one, and ignores a malformed hint', function () {
+    $ana = User::factory()->create(['email' => 'ana@proside.pt']);
+
+    $this->get('/auth/youtrack/redirect?account=not-an-email');
+    expect(session('oauth_expect'))->toBeNull();
+
+    $this->get('/auth/youtrack/redirect?account=ANA@proside.pt');
+    hub_login('hub-1', 'ana@proside.pt')->assertRedirect(route('home'));
+    $this->assertAuthenticatedAs($ana->fresh());
+});
+
+it('shows previously used accounts only where the browser keeps them, and never offers the dev user', function () {
+    $this->get('/login')->assertOk()->assertSee('previous-list', false)->assertSee(__('ui.login.previous'))->assertSee(__('ui.login.other_account'));
+
+    $user = User::factory()->create(['email' => 'ana@proside.pt']);
+    $this->actingAs($user)->get('/')->assertOk()->assertSee('"rememberAccount":true', false);
+    $dev = User::factory()->create(['email' => \App\Http\Controllers\AuthController::DEV_EMAIL]);
+    $this->actingAs($dev)->get('/')->assertOk()->assertSee('"rememberAccount":false', false);
 });

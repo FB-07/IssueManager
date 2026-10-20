@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
-/** Login through the YouTrack Hub. Only invited accounts (php artisan issuemanager:invite) get in. */
+/** Login through the YouTrack Hub. Only accounts of the company email domain (config issuemanager.allowed_domain) get in. */
 class AuthController extends Controller
 {
     /** The only account the local dev login signs in (and the only one allowed to use the shared YouTrack token). */
@@ -29,12 +29,22 @@ class AuthController extends Controller
         }
         $request->session()->put('oauth_state', $state = Str::random(40));
 
-        return redirect()->away($hub->authorizeUrl($state));
+        // `account` = a previously used account chosen on the login page: the Hub reuses its own session, so the result is
+        // checked against it in the callback; `other` = ask for credentials again, to sign in with a different account
+        $account = $request->query('account');
+        if (is_string($account) && filter_var($account, FILTER_VALIDATE_EMAIL)) {
+            $request->session()->put('oauth_expect', mb_strtolower($account));
+        } else {
+            $request->session()->forget('oauth_expect');
+        }
+
+        return redirect()->away($hub->authorizeUrl($state, $request->boolean('other')));
     }
 
     public function callback(Request $request, HubOAuth $hub)
     {
         $expected = $request->session()->pull('oauth_state');
+        $expectedAccount = $request->session()->pull('oauth_expect');
         if (! $expected || ! hash_equals($expected, (string) $request->query('state'))) {
             return redirect()->route('login')->with('error', __('ui.login.failed'));
         }
@@ -49,12 +59,19 @@ class AuthController extends Controller
             return redirect()->route('login')->with('error', $e->getMessage());
         }
 
-        $user = User::where('hub_id', $profile['id'])->first()
-            ?? ($profile['email'] ? User::whereRaw('lower(email) = ?', [mb_strtolower($profile['email'])])->first() : null);
-
-        if (! $user) {
-            return redirect()->route('login')->with('error', __('ui.login.not_invited', ['email' => $profile['email'] ?? $profile['name']]));
+        if ($expectedAccount && mb_strtolower((string) $profile['email']) !== $expectedAccount) {
+            return redirect()->route('login')->with('error', __('ui.login.wrong_account', ['got' => $profile['email'] ?? $profile['name'], 'expected' => $expectedAccount]));
         }
+
+        $email = mb_strtolower(trim((string) ($profile['email'] ?? '')));
+        if (! $this->allowedEmail($email)) {
+            return redirect()->route('login')->with('error', __('ui.login.domain_only', ['domain' => config('issuemanager.allowed_domain'), 'email' => $email !== '' ? $email : $profile['name']]));
+        }
+
+        // no invitations: the first login of an account of the domain creates its user
+        $user = User::where('hub_id', $profile['id'])->first()
+            ?? User::whereRaw('lower(email) = ?', [$email])->first()
+            ?? User::create(['email' => $email, 'name' => $profile['name']]);
 
         $user->update(['hub_id' => $profile['id'], 'name' => $profile['name'], 'avatar_url' => $profile['avatar']]);
         $user->youtrackConnection()->updateOrCreate([], [
@@ -105,6 +122,15 @@ class AuthController extends Controller
         }
 
         return redirect()->intended(route('home'));
+    }
+
+    /** The email must be exactly `name@<allowed domain>`: "x@proside.pt.evil.com" or "x@evilproside.pt" do not pass. */
+    private function allowedEmail(string $email): bool
+    {
+        $domain = (string) config('issuemanager.allowed_domain');
+        $at = strrpos($email, '@');
+
+        return $domain !== '' && $at !== false && $at > 0 && substr($email, $at + 1) === $domain && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
     }
 
     private function devLoginAllowed(): bool

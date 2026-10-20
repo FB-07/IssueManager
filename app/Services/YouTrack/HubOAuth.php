@@ -22,7 +22,8 @@ class HubOAuth
         return config('services.youtrack.redirect') ?: rtrim((string) config('app.url'), '/').route('auth.youtrack.callback', [], false);
     }
 
-    public function authorizeUrl(string $state): string
+    /** `$forceLogin` always asks for credentials (to sign in with a different account) instead of reusing the Hub session. */
+    public function authorizeUrl(string $state, bool $forceLogin = false): string
     {
         $c = config('services.youtrack');
 
@@ -33,7 +34,7 @@ class HubOAuth
             'scope' => $c['scopes'],
             'state' => $state,
             'access_type' => 'offline', // also returns a refresh token
-            'request_credentials' => 'default',
+            'request_credentials' => $forceLogin ? 'required' : 'default',
         ], '', '&', PHP_QUERY_RFC3986);
     }
 

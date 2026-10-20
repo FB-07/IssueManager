@@ -21,6 +21,10 @@
                     <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><x-ui.icon name="logo" class="size-4" /></span>
                     <div class="min-w-0 flex-1">
                         <div class="prose-msg text-[15px]" x-html="s.render(m.body)"></div>
+                        {{-- the answer is on its way but paused (Claude is looking something up) --}}
+                        <div x-show="s.stalled && m.id === s.messages.at(-1)?.id && String(m.id).startsWith('tmp-')" x-cloak class="mt-1 flex items-center py-1" role="status" x-bind:aria-label="s.t('chat.processing')">
+                            <span class="flex gap-1"><i class="dot size-1.5 rounded-full bg-muted"></i><i class="dot size-1.5 rounded-full bg-muted"></i><i class="dot size-1.5 rounded-full bg-muted"></i></span>
+                        </div>
                         <template x-if="m.meta?.batch">
                             <x-chat.batch />
                         </template>
@@ -47,12 +51,13 @@
         </div>
     </template>
 
-    {{-- processing indicator --}}
+    {{-- waiting for the answer: three dots, in the place where it will appear --}}
     <div x-show="(s.processing && !s.streaming) || s.creating" x-transition.opacity class="flex gap-3" role="status" x-bind:aria-label="s.creating ? s.t(s.creatingKind === 'update' ? 'chat.updating' : 'chat.creating') : s.t('chat.processing')">
         <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><x-ui.icon name="logo" class="size-4" /></span>
-        <div class="flex items-center gap-2 py-1.5 text-sm text-muted">
-            <span class="flex gap-1"><i class="dot size-1.5 rounded-full bg-muted"></i><i class="dot size-1.5 rounded-full bg-muted"></i><i class="dot size-1.5 rounded-full bg-muted"></i></span>
-            <span x-text="s.creating ? s.t(s.creatingKind === 'update' ? 'chat.updating' : 'chat.creating') : s.t('chat.processing')"></span>
+        <div class="flex items-center gap-2.5 py-2 text-sm text-muted">
+            <span class="flex gap-1.5"><i class="dot size-2 rounded-full bg-muted"></i><i class="dot size-2 rounded-full bg-muted"></i><i class="dot size-2 rounded-full bg-muted"></i></span>
+            {{-- only creating/updating an issue says what is going on; thinking is just the dots --}}
+            <span x-show="s.creating" x-text="s.creating ? s.t(s.creatingKind === 'update' ? 'chat.updating' : 'chat.creating') : ''"></span>
         </div>
     </div>
 </section>

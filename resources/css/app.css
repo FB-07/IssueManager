@@ -130,9 +130,29 @@ body {
     .badge {
         @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium;
     }
-    .prose-msg p { @apply my-1.5 leading-relaxed; }
-    .prose-msg ul { @apply my-2 list-disc space-y-1 pl-5; }
-    .prose-msg h2 { @apply mt-4 mb-1 text-sm font-semibold; }
+    .prose-msg > :first-child { @apply mt-0; }
+    .prose-msg p { @apply my-2 leading-relaxed; }
+    .prose-msg strong { @apply font-semibold; }
+    /* lists: roomy rows, accent markers, nested levels get lighter markers */
+    .prose-msg ul, .prose-msg ol { @apply my-2.5 space-y-1.5 pl-5 leading-relaxed; }
+    .prose-msg ul { @apply list-disc; }
+    .prose-msg ol { @apply list-decimal; }
+    .prose-msg li { @apply pl-1; }
+    .prose-msg li::marker { @apply text-accent; }
+    .prose-msg ol > li::marker { @apply font-medium; }
+    .prose-msg li > ul, .prose-msg li > ol { @apply my-1.5 text-[0.95em]; }
+    .prose-msg li > ul { list-style-type: circle; }
+    .prose-msg h2 { @apply mb-1 mt-4 text-sm font-semibold; }
+    .prose-msg hr { @apply my-4 border-line; }
+    .prose-msg blockquote { @apply my-2 border-l-2 border-line-strong pl-3 text-muted; }
+    /* tables scroll sideways on narrow screens instead of breaking the layout */
+    .prose-msg .table-wrap { @apply my-3 overflow-x-auto rounded-xl border border-line; }
+    .prose-msg table { @apply w-full border-collapse text-left text-[13.5px]; }
+    .prose-msg th { @apply bg-surface-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted; }
+    .prose-msg td { @apply border-t border-line px-3 py-2 align-top; }
+    .prose-msg tbody tr:hover td { @apply bg-surface-2/50; }
+    /* an issue key (DEV-12) as a small clickable chip */
+    .prose-msg a.issue-key { @apply inline-flex items-center rounded-md bg-accent-soft px-1.5 py-px font-mono text-[0.85em] font-medium text-accent no-underline transition hover:underline; }
     .prose-msg code { @apply rounded bg-surface-3 px-1 py-0.5 font-mono text-[0.85em]; }
 }
 

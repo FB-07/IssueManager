@@ -1,5 +1,15 @@
 <div class="shrink-0 px-3 pb-3 pt-1 sm:px-6 sm:pb-4" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
     <form class="mx-auto w-full max-w-3xl" @submit.prevent="s.send()">
+        {{-- the issue this chat is about: "change it", "close it" refer to it --}}
+        <div x-show="s.context" x-cloak class="anim-rise mb-2 flex items-center gap-2 rounded-xl border border-accent/30 bg-accent-soft/40 px-3 py-2 text-xs">
+            <x-ui.icon name="link" class="size-3.5 shrink-0 text-accent" />
+            <span class="shrink-0 font-medium text-accent" x-text="s.t('context.title')"></span>
+            <a class="shrink-0 font-mono font-medium hover:underline" x-bind:href="s.context?.url" target="_blank" rel="noopener" x-bind:title="s.t('similar.open')" x-text="s.context?.key"></a>
+            <span class="min-w-0 flex-1 truncate text-muted" x-bind:title="s.contextIssue?.summary ?? s.context?.summary" x-text="s.contextIssue?.summary ?? s.context?.summary"></span>
+            <span class="chip shrink-0" x-show="s.contextIssue?.state" x-text="s.lbl('state', s.contextIssue?.state)"></span>
+            <button type="button" class="btn-ghost btn px-2 py-1 text-xs" @click="s.openIssuePicker()" x-text="s.t('context.change')"></button>
+            <button type="button" class="btn-icon size-6" @click="s.clearContext()" x-bind:aria-label="s.t('context.remove')" x-bind:title="s.t('context.remove')"><x-ui.icon name="x" class="size-3" /></button>
+        </div>
         <div class="rounded-2xl border border-line bg-surface shadow-sm transition focus-within:border-line-strong focus-within:shadow-[var(--shadow)]">
 
             {{-- messages waiting for the current answer to finish --}}
@@ -28,7 +38,7 @@
 
             <textarea id="composer-input" rows="1" maxlength="20000"
                       class="block max-h-[220px] w-full resize-none bg-transparent px-4 pb-1 pt-3.5 text-[15px] leading-relaxed placeholder:text-faint focus:outline-none"
-                      x-bind:placeholder="s.voice.listening ? s.t('composer.voice_listening') : s.t('composer.placeholder')" x-bind:aria-label="s.t('composer.placeholder')"
+                      x-bind:placeholder="s.voice.listening ? s.t('composer.voice_listening') : (s.context ? s.t('context.placeholder', { key: s.context.key }) : s.t('composer.placeholder'))" x-bind:aria-label="s.t('composer.placeholder')"
                       x-model="s.composer.text" @input="s.autosize($el)" @keydown="s.onComposerKey($event)" @paste="s.onPaste($event)"
                       x-effect="s.composer.text; $nextTick(() => s.autosize($el))"></textarea>
 
@@ -47,6 +57,13 @@
                     <span class="relative h-4 w-7 rounded-full transition" x-bind:class="s.draftEnabled ? 'bg-accent' : 'bg-surface-3'" aria-hidden="true">
                         <span class="absolute top-0.5 size-3 rounded-full transition-all" x-bind:class="s.draftEnabled ? 'left-3.5 bg-accent-fg' : 'left-0.5 bg-muted'"></span>
                     </span>
+                </button>
+
+                <button type="button" class="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition"
+                        x-bind:class="s.context ? 'border-accent/40 bg-accent-soft text-accent' : 'border-line text-muted hover:text-fg'"
+                        @click="s.openIssuePicker()" x-bind:title="s.t('context.pick_hint')">
+                    <x-ui.icon name="link" class="size-3.5" />
+                    <span x-text="s.context ? s.context.key : s.t('context.title')"></span>
                 </button>
 
                 <span class="ml-auto mr-2 hidden text-[11px] text-faint sm:inline" x-text="s.t('composer.hint')"></span>

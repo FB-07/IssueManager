@@ -91,6 +91,9 @@
 {{-- existing issues: search + edit --}}
 <x-ui.modal open="s.issuesOpen" title="issues.title" width="max-w-3xl">
     <div x-show="!s.issueEdit" class="space-y-3">
+        <p class="flex items-start gap-2 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent" x-show="s.issuePickMode" x-cloak>
+            <x-ui.icon name="link" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('context.picker_hint')"></span>
+        </p>
         <form class="flex gap-2" @submit.prevent="s.applyIssueFilters()">
             <input class="field" x-model="s.issueFilters.q" x-bind:placeholder="s.t('issues.search')" x-bind:aria-label="s.t('issues.search')" maxlength="200">
             <button class="btn" type="submit"><x-ui.icon name="search" /><span class="hidden sm:inline" x-text="s.t('issues.search_btn')"></span></button>
@@ -117,11 +120,12 @@
         <div class="max-h-[42dvh] overflow-y-auto rounded-xl border border-line transition-opacity" x-show="s.issueResults.length" x-bind:class="s.issuesLoading && 'opacity-50'">
             <ul class="divide-y divide-line">
                 <template x-for="i in s.issueResults" x-bind:key="i.id">
-                    <li><button type="button" class="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-surface-2" @click="s.editIssue(i)">
+                    <li><button type="button" class="flex w-full items-center gap-3 px-3.5 py-3 text-left transition hover:bg-surface-2" @click="s.issuePickMode ? s.pickIssue(i) : s.editIssue(i)">
                         <span class="w-24 shrink-0 font-mono text-xs text-muted" x-text="i.id"></span>
                         <span class="min-w-0 flex-1 truncate text-sm" x-text="i.summary"></span>
                         <span class="chip hidden sm:inline-flex" x-show="i.type" x-text="s.lbl('type', i.type)"></span>
                         <span class="chip hidden sm:inline-flex" x-show="i.state" x-text="s.lbl('state', i.state)"></span>
+                        <span class="shrink-0 text-xs font-medium text-accent" x-show="s.issuePickMode" x-text="s.t('context.use')"></span>
                     </button></li>
                 </template>
             </ul>

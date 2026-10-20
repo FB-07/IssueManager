@@ -145,7 +145,7 @@ class DraftController extends Controller
         ]);
         $conv->touch();
 
-        return ['draft' => Presenter::draft($draft->fresh()), 'message' => Presenter::message($message->load('attachments'))];
+        return ['draft' => Presenter::draft($draft->fresh()), 'message' => Presenter::message($message->load('attachments')), 'conversation' => Presenter::conversation($conv->fresh())];
     }
 
     private function draft(Request $request, int $conversation): IssueDraft

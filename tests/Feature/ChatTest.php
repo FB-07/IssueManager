@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
@@ -46,14 +47,14 @@ it('streams text and the draft tool call as SSE and sends the tool only when ena
     expect($out)->toContain('event: text')->toContain('Olá ')->toContain('event: draft')
         ->toContain('"summary":"Altura 15px"')->toContain('event: done');
 
-    Http::assertSent(fn ($r) => $r->header('x-api-key')[0] === 'test-key'
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && $r->header('x-api-key')[0] === 'test-key'
         && $r['stream'] === true
-        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'get_issue']
+        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'count_issues', 'get_issue']
         && str_contains($r['system'], 'NO suggestions'));
 
     Http::fake(['api.anthropic.com/*' => Http::response(sse([]), 200)]);
     $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
-    Http::assertSent(fn ($r) => collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'count_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
 });
 
 it('sends images as base64 blocks and never leaks the key on API errors', function () {
@@ -63,7 +64,7 @@ it('sends images as base64 blocks and never leaks the key on API errors', functi
     $out = $this->post('/api/chat', chatPayload() + ['files' => [UploadedFile::fake()->image('a.png', 10, 10)]])->streamedContent();
 
     expect($out)->toContain('event: error')->not->toContain('secret-key');
-    Http::assertSent(fn ($r) => collect($r['messages'][0]['content'])->contains(fn ($b) => $b['type'] === 'image' && $b['source']['media_type'] === 'image/png'));
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && collect($r['messages'][0]['content'])->contains(fn ($b) => $b['type'] === 'image' && $b['source']['media_type'] === 'image/png'));
 });
 
 it('forwards the create_issue tool call as a create event when the draft mode is off', function () {
@@ -162,4 +163,142 @@ it('forwards propose_issues as a batch event with the proposals', function () {
     $out = $this->post('/api/chat', chatPayload())->streamedContent();
 
     expect($out)->toContain('event: batch')->toContain('"message":"Encontrei 2"')->toContain('"summary":"B"')->not->toContain('event: error');
+});
+
+function chatSystem(array $over = []): string
+{
+    Http::fake([
+        'yt.test/api/users/me*' => Http::response(['id' => '1-1', 'login' => 'ana.silva', 'fullName' => 'Ana Silva']),
+        'api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200),
+    ]);
+    test()->post('/api/chat', chatPayload($over))->streamedContent();
+
+    return Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->first()[0]['system'];
+}
+
+it('tells Claude from the first message who is signed in, so "assign it to me" can be resolved', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    test()->actingAs(yt_user('t', ['name' => 'Nome da App', 'email' => 'ana.silva@proside.pt']));
+
+    foreach ([true, false] as $draftMode) {
+        $system = chatSystem(['draft_enabled' => $draftMode]);
+
+        // the name comes from YouTrack itself, together with the login that assignees are identified by
+        expect($system)->toContain('Ana Silva <ana.silva@proside.pt>')->toContain('`ana.silva`')->toContain('assign it to me')->toContain('atribui-me')
+            ->toContain("project's `assignees` list")->toContain('Never guess their gender')->not->toContain('Nome da App');
+    }
+});
+
+it('still names the user when YouTrack cannot be asked, and says the login is unknown', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    test()->actingAs(yt_user('t', ['name' => 'Rui Costa', 'email' => 'rui@proside.pt']));
+    Http::fake([
+        'yt.test/api/users/me*' => Http::response(['error' => 'boom'], 500),
+        'api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200),
+    ]);
+
+    test()->post('/api/chat', chatPayload())->streamedContent();
+    $system = Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->first()[0]['system'];
+
+    expect($system)->toContain('Rui Costa <rui@proside.pt>')->toContain('login is unknown')->not->toContain('set `assignee` to that login');
+});
+
+it('uses the YouTrack identity for the local dev user and never shows its fake email', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    test()->actingAs(yt_user('t', ['name' => 'Dev', 'email' => \App\Http\Controllers\AuthController::DEV_EMAIL]));
+
+    $system = chatSystem();
+
+    expect($system)->toContain('Ana Silva')->toContain('`ana.silva`')->not->toContain('dev@issuemanager.test')->not->toContain('Dev <');
+});
+
+it('asks YouTrack who the user is only once in a while', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    test()->actingAs(yt_user());
+    Cache::flush();
+    Http::fake([
+        'yt.test/api/users/me*' => Http::response(['id' => '1-1', 'login' => 'ana.silva', 'fullName' => 'Ana Silva']),
+        'api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200),
+    ]);
+
+    test()->post('/api/chat', chatPayload())->streamedContent();
+    test()->post('/api/chat', chatPayload())->streamedContent();
+
+    expect(Http::recorded(fn ($r) => str_contains($r->url(), 'users/me'))->count())->toBe(1)
+        ->and(Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->count())->toBe(2);
+});
+
+
+function lookupRound(string $tool, array $input): string
+{
+    return sse([
+        ['type' => 'content_block_start', 'index' => 0, 'content_block' => ['type' => 'tool_use', 'id' => 'tu_1', 'name' => $tool]],
+        ['type' => 'content_block_delta', 'index' => 0, 'delta' => ['type' => 'input_json_delta', 'partial_json' => json_encode($input)]],
+        ['type' => 'content_block_stop', 'index' => 0],
+        ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
+    ]);
+}
+
+it('counts issues on the server with count_issues, so "how many" is the real total and not the size of a page', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()->push(lookupRound('count_issues', ['query' => 'for: me #Unresolved']), 200)->push(sse([
+            ['type' => 'content_block_start', 'index' => 0, 'content_block' => ['type' => 'text', 'text' => '']],
+            ['type' => 'content_block_delta', 'index' => 0, 'delta' => ['type' => 'text_delta', 'text' => 'Tens 137.']],
+            ['type' => 'content_block_stop', 'index' => 0],
+        ]), 200),
+        'yt.test/api/issuesGetter/count*' => Http::response(['count' => 137]),
+    ]);
+
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
+
+    expect($out)->toContain('Tens 137.')->toContain('event: done')->not->toContain('event: error');
+    $second = Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->values()[1][0]->data();
+    expect($second['messages'][2]['content'][0])->toMatchArray(['type' => 'tool_result', 'tool_use_id' => 'tu_1'])
+        ->and(json_decode($second['messages'][2]['content'][0]['content'], true))->toMatchArray(['total' => 137]);
+    // the query goes to YouTrack as typed (every project: no `project:` filter is added)
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'issuesGetter/count') && str_contains($r['query'], 'for: me #Unresolved') && ! str_contains($r['query'], 'project:'));
+});
+
+it('lists issues with find_issues by pages of up to 50 and reports the total and whether there is more', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    $row = fn ($n) => ['id' => "2-$n", 'idReadable' => "DEV-$n", 'summary' => "Issue $n", 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()->push(lookupRound('find_issues', ['query' => 'for: me #Unresolved', 'limit' => 50, 'page' => 2]), 200)->push(sse([]), 200),
+        'yt.test/api/issuesGetter/count*' => Http::response(['count' => 137]),
+        'yt.test/api/issues?*' => Http::response(array_map($row, range(1, 51))), // one extra row tells there is a next page
+    ]);
+
+    $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
+
+    $second = Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->values()[1][0]->data();
+    $result = json_decode($second['messages'][2]['content'][0]['content'], true);
+    expect($result)->toMatchArray(['total' => 137, 'page' => 2, 'shown' => 50, 'has_more' => true])->and($result['issues'])->toHaveCount(50);
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'api/issues?') && str_contains(urldecode($r->url()), '$top=51') && str_contains(urldecode($r->url()), '$skip=50'));
+});
+
+it('clamps absurd page sizes and tells Claude how to count and list in the prompt', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()->push(lookupRound('find_issues', ['query' => 'x', 'limit' => 5000]), 200)->push(sse([]), 200),
+        'yt.test/api/issuesGetter/count*' => Http::response(['count' => 0]),
+        'yt.test/api/issues?*' => Http::response([]),
+    ]);
+
+    $this->post('/api/chat', chatPayload())->streamedContent();
+
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'api/issues?') && str_contains(urldecode($r->url()), '$top=51'));
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && str_contains($r['system'], 'call `count_issues`') && str_contains($r['system'], 'for: me') && str_contains($r['system'], 'has_more'));
+});
+
+it('tells Claude how to format lists, tables and issue keys in both modes', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    foreach ([true, false] as $draftMode) {
+        Http::fake(['api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200)]);
+        $this->post('/api/chat', chatPayload(['draft_enabled' => $draftMode]))->streamedContent();
+
+        Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic')
+            && str_contains($r['system'], 'Markdown lists') && str_contains($r['system'], 'ONE issue per line')
+            && str_contains($r['system'], '`- **KEY** — title · _state_ · project`') && str_contains($r['system'], 'Never put several issues in one paragraph'));
+    }
 });

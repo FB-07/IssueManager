@@ -9,6 +9,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 
 let similarTimer;
 let batchSimilarTimer;
+let stallTimer;
 const batchSaveTimers = new Map();
 const batchScopes = new Map();
 const EMPTY_META = { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
@@ -57,6 +58,7 @@ export function createStore(boot) {
         processing: false,
         queue: [],
         streaming: false,
+        stalled: false, // the answer has started but nothing new arrives (Claude is looking something up): dots show under the text
         draftEnabled: true,
         catalog: null,
         assigneeDeclined: new Set(),
@@ -84,6 +86,8 @@ export function createStore(boot) {
         issuesLoading: false,
         issueHasMore: false,
         issueEdit: null,
+        issuePickMode: false, // the issues modal is choosing the chat's context issue instead of editing
+        contextIssue: null, // current fields of the context issue (state, assignee…) for the bar above the composer
         issueMeta: null,
         issueSaving: false,
 
@@ -138,7 +142,10 @@ export function createStore(boot) {
         icon(name) {
             return `<svg class="size-full" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${this.icons[name] ?? ''}</svg>`;
         },
-        render: renderText,
+        /** Markdown for chat text and previews; issue keys of the user's projects become links to YouTrack. */
+        render(src) {
+            return renderText(src, { issueUrl: this.trackerUrl, keys: (this.projects ?? this.catalog?.projects ?? []).map((p) => p.key) });
+        },
         size: formatSize,
 
         // ---- theme / layout ----------------------------------------------
@@ -207,6 +214,7 @@ export function createStore(boot) {
             this.pending.clear();
             this.flushBatches();
             this.batches = {};
+            this.contextIssue = null;
         },
         newChat() {
             this.stopVoice();
@@ -236,6 +244,8 @@ export function createStore(boot) {
                 if (this.draft?.project) this.loadMeta(this.draft.project);
                 this.loadProjects();
                 this.ensureCatalog();
+                this.contextIssue = null;
+                this.refreshContext();
                 setTimeout(() => this.scrollBottom(true), 30);
             } catch (e) {
                 this.notify(e.status === 403 || e.status === 404 ? this.t('errors.conversation_missing') : e.message, 'error');
@@ -482,6 +492,7 @@ export function createStore(boot) {
                             messages: turns,
                             draft_enabled: this.draftEnabled,
                             draft: this.draft ? this.draftForApi() : null,
+                            context: this.context ? { key: this.context.key } : null,
                             catalog,
                         },
                         files: files.map((f) => f.file),
@@ -494,6 +505,9 @@ export function createStore(boot) {
                                 this.messages.push(live);
                             }
                             live.body = text;
+                            this.stalled = false;
+                            clearTimeout(stallTimer);
+                            stallTimer = setTimeout(() => (this.stalled = this.processing && this.streaming), 700);
                             this.scrollBottomIfNear();
                         },
                     },
@@ -567,6 +581,8 @@ export function createStore(boot) {
             } finally {
                 this.processing = false;
                 this.streaming = false;
+                this.stalled = false;
+                clearTimeout(stallTimer);
                 const next = this.queue.shift();
                 if (next) setTimeout(() => this.send(next.body, next.files), 0);
             }
@@ -855,6 +871,8 @@ export function createStore(boot) {
                 const res = await api('POST', `/api/conversations/${this.activeId}/draft/create`, { confirmed: true, direct: true });
                 this.draft = res.draft;
                 this.messages.push(res.message);
+                this.syncConversation(res.conversation);
+                this.refreshContext();
                 setTimeout(() => this.scrollBottom(), 40);
             } catch (e) {
                 if (e.data?.draft) this.draft = e.data.draft;
@@ -862,6 +880,12 @@ export function createStore(boot) {
             } finally {
                 this.creating = false;
             }
+        },
+        /** "Continue this conversation" after a creation: hide the choice, make that issue the chat's context (the user's explicit choice) and go back to the composer. */
+        continueConversation(message) {
+            message.meta = { ...message.meta, dismissed: true };
+            this.focusComposer();
+            if (message.meta?.key && this.context?.key !== message.meta.key) this.setContext(message.meta.key);
         },
         /** The user asked Claude to change an existing issue (by key, title or "the one I just created"). */
         async applyIssueEdit(edit) {
@@ -871,6 +895,8 @@ export function createStore(boot) {
             try {
                 const res = await api('POST', `/api/conversations/${this.activeId}/issues/update`, { issue_id: issueId, ...fields });
                 this.messages.push(res.message);
+                this.syncConversation(res.conversation);
+                this.refreshContext();
                 if (res.draft) this.draft = res.draft;
                 setTimeout(() => this.scrollBottom(), 40);
             } catch (e) {
@@ -1165,6 +1191,8 @@ export function createStore(boot) {
                 });
                 this.draft = res.draft;
                 this.messages.push(res.message);
+                this.syncConversation(res.conversation);
+                this.refreshContext();
                 setTimeout(() => this.scrollBottom(), 40);
             } catch (e) {
                 if (e.data?.draft) this.draft = e.data.draft;
@@ -1176,12 +1204,64 @@ export function createStore(boot) {
         },
 
         // ---- issues browser -----------------------------------------------
-        async openIssues() {
+        async openIssues(pick = false) {
+            this.issuePickMode = pick === true;
             this.issuesOpen = true;
             this.issueEdit = null;
             this.sidebarOpen = false;
             await this.ensureCatalog();
             await this.searchIssues(this.issueResults.length ? this.issuePage : 1);
+        },
+        // ---- chat context: the issue this conversation is about ----------------
+        get context() {
+            return this.activeConversation?.context ?? null;
+        },
+        openIssuePicker() {
+            return this.openIssues(true);
+        },
+        async pickIssue(issue) {
+            this.issuesOpen = false;
+            await this.setContext(issue.id);
+        },
+        /** Links the chat to an issue (or, with null, unlinks it). Without an open chat one is started. */
+        async setContext(key) {
+            try {
+                if (!this.activeId) {
+                    const c = await api('POST', '/api/conversations');
+                    this.conversations.unshift(c);
+                    this.activeId = c.id;
+                    history.pushState({}, '', `/c/${c.id}`);
+                    this.loadProjects();
+                }
+                const res = await api('PUT', `/api/conversations/${this.activeId}/context`, { issue_key: key });
+                this.syncConversation(res.conversation);
+                this.contextIssue = res.issue;
+                if (key) this.notify(this.t('context.linked', { key }), 'success');
+            } catch (e) {
+                this.notify(e.message, 'error');
+            }
+        },
+        clearContext() {
+            return this.setContext(null);
+        },
+        syncConversation(conv) {
+            const c = this.conversations.find((x) => x.id === conv?.id);
+            if (c) Object.assign(c, conv);
+        },
+        /** Fresh state of the context issue for the bar (it may have been changed in YouTrack or by this chat). */
+        async refreshContext() {
+            const key = this.context?.key;
+            if (!key) {
+                this.contextIssue = null;
+
+                return;
+            }
+            try {
+                const issue = await api('GET', `/api/youtrack/issues/${encodeURIComponent(key)}`);
+                if (this.context?.key === key) this.contextIssue = issue;
+            } catch (_) {
+                // only decoration: the key and title still show
+            }
         },
         /** Distinct filter choices; once a project is picked they come from that project only. */
         get issueFilterOptions() {

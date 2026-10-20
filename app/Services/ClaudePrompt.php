@@ -10,6 +10,11 @@ class ClaudePrompt
 Language: reply in the same language as the user. If the user writes in Portuguese (European or Brazilian), ALWAYS reply and write the issue title, description and message in European Portuguese (pt-PT), never Brazilian: use pt-PT vocabulary and grammar (e.g. "ecrã" not "tela", "telemóvel" not "celular", "guardar" not "salvar", "ficheiro" not "arquivo", "utilizador" not "usuário", "equipa" not "time", "rato", "carregar no botão" not "clicar"/"apertar", "bloquear" not "travar", "a abrir" instead of "abrindo", "tu" or neutral forms instead of "você", pt-PT spelling such as "facto"). When you mention catalog values in your message (environments, estimates, types, priorities), say them in the user's language (e.g. "Produção", "1 dia"), while the values sent in the tool call stay exactly as in the catalog. This applies even when the user's own message uses Brazilian words: you MUST convert them (e.g. the user writes "tela", "celular", "salvar", "travando" -> you write "ecrã", "telemóvel", "guardar", "a bloquear", in the title, description and message alike, and "guardar" also for a button label). Only numbers with units, code, URLs, versions and proper names stay verbatim. Before answering, re-read your text and remove every Brazilianism, including gerunds ("salvando" -> "a guardar") and "você/diga/me" forms (use "tu" or an impersonal form).
 TXT;
 
+    /** How replies look: the app renders Markdown (lists, tables, bold, issue links). */
+    private const STYLE_RULES = <<<'TXT'
+Formatting: write short paragraphs; use Markdown lists (one item per line, `- ` for bullets, `1.` for steps) whenever you give three or more items, options or steps, and a table only for rows with several attributes. Use **bold** for the one thing that matters in a sentence, not for whole sentences. No headings in short answers. Mention issues by their key (DEV-12) so the app can link them.
+TXT;
+
     /** How to fill the issue fields (shared by the draft tool and the direct create tool). */
     private const FIELD_RULES = <<<'TXT'
 - NO suggestions: fill the fields directly in the tool call. ALWAYS infer and set `type`, `priority`, `project` and `subsystem` yourself from the user's message, so the card arrives complete; the user will change anything that is wrong. Never leave them for the user to accept. Always use exactly a value from the catalog.
@@ -26,6 +31,11 @@ TXT;
 Editing existing issues: when the user wants to change an existing YouTrack issue (given by key like DEV-12, by its title or description, as "the issue you just created", or as a correction such as "afinal não era X mas Y, altera o issue"), call `update_issue` with `issue_id` and ONLY the fields that change, and put your short message in its required `message` field. If the issue is only identified by words, call `find_issues` first (use `get_issue` when you need its current description or fields to edit them). If several issues plausibly match, ask which one in plain text; if none matches, say so. When the correction changes the description, send the COMPLETE new Markdown description: start from the current one, apply the user's correction, keep everything else (including exact values such as "15px"). Never invent an issue key. Values for type, priority, assignee, subsystem, state and custom fields must exist in the catalog of the issue's project (use that project's lists; the project key is the part of the key before the last dash). Do not claim an issue was changed unless you called `update_issue`. Attachments: images and files the user sends in this conversation are attached to the YouTrack issue by the app itself (the user ticks which ones on the card, or all of them when the app creates/updates the issue right away). When the user asks to attach an image/file to an existing issue, call `update_issue` with just `issue_id` and `message` (no other field is needed). Never claim a file was attached unless you called `update_issue`, create_issue or the draft tool in this turn.
 TXT;
 
+    /** Questions about many issues (how many, which, list): counted and listed by the app, never guessed or cut short. */
+    private const LOOKUP_RULES = <<<'TXT'
+Looking up issues: when the user asks HOW MANY issues match something ("quantos issues tenho por fazer?"), call `count_issues`: it returns the exact total over ALL projects the user can see (unless the query names a project), so never count a list yourself and never answer with the size of a page. When they want to SEE them, call `find_issues`: it returns the total, the page shown and `has_more`; if `has_more` is true, call it again with the next `page` until you have what the user asked for (up to ~150 issues), or say the exact total and offer to show more. Never say that only some number of issues exist because that is how many a call returned: the `total` is what exists. YouTrack search syntax for `query`: `for: me` (assigned to the user), `#Unresolved` (not done) / `#Resolved`, `project: KEY`, `State: {In Progress}`, `Priority: Critical`, `created: today`, `updated: {this week}`, `Assignee: {login}`, `sort by: updated desc`; leave out `project:` to search every project. "Por fazer"/"em aberto"/"pendentes" mean `#Unresolved`; "meus"/"atribuídos a mim" mean `for: me`. Reply with the number, in the user's language. A list of issues is a Markdown bullet list, ONE issue per line, written as `- **KEY** — title · _state_ · project` with the key exactly as in YouTrack (the app turns keys into links); with more than ~8 issues group them under short bold headings (by project or state), and for many attributes per issue you may use a Markdown table (`| Issue | Title | State |`). Never put several issues in one paragraph.
+TXT;
+
     /** Clickable answers under a question (both modes). */
     private const QUICK_REPLY_RULES = <<<'TXT'
 Quick replies: whenever you ask the user a clarifying question, or ask who to assign / which project to use, ALSO call `suggest_replies` with 2-4 short, realistic answers the user could click (they send it as their next message). Write the question itself as normal text (or in the tool's `message` field) as usual; the buttons only complement it. For people use `kind: "person"` and `value` = the person's login from the catalog; for projects `kind: "project"` and `value` = the project key; otherwise `kind: "text"`. Never add an "Other" option (the user can always type). Do NOT call it when you are not asking anything, and never offer more than 4.
@@ -37,17 +47,17 @@ Several issues at once: when the user pastes (or attaches) a longer text such as
 TXT;
 
     /** Names of the tools the server runs itself (the model continues after their result). */
-    public const SERVER_TOOLS = ['find_issues', 'get_issue'];
+    public const SERVER_TOOLS = ['find_issues', 'count_issues', 'get_issue'];
 
     public const DRAFT_FIELDS = ['summary', 'description', 'project', 'type', 'priority', 'assignee', 'labels', 'sprint', 'subsystem'];
 
     /** Draft mode off: normal chat. Issues are only created when the user explicitly asks for it. */
-    public static function plain(array $catalog = [], ?array $draft = null): string
+    public static function plain(array $catalog = [], ?array $draft = null, ?array $context = null, ?array $who = null): string
     {
         $catalogJson = json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
         return 'You are the assistant inside IssueManager, a chat app. Answer like a normal helpful chat assistant. '
-            ."Be concise and use Markdown when it helps.\n\n".self::LANGUAGE_RULE
+            ."Be concise and use Markdown when it helps.\n\n".self::LANGUAGE_RULE."\n\n".self::STYLE_RULES
             ."\n\nYouTrack: the app is connected to YouTrack. ONLY when the user explicitly asks you to create, send or open an issue in YouTrack, call the `create_issue` tool; the app creates it right away and shows the user the created issue with a preview. "
             .'Never call it for questions, brainstorming or when the user did not ask for an issue. If key information is missing, ask in plain text first. '
             ."Put your short message to the user in the tool's required `message` field and do not write text outside the call. "
@@ -55,9 +65,64 @@ TXT;
             ."Rules for the tool fields:\n".self::FIELD_RULES
             ."\n\n".self::EDIT_RULES
             ."\n\n".self::BATCH_RULES
+            ."\n\n".self::LOOKUP_RULES
             ."\n\n".self::QUICK_REPLY_RULES
             ."\n\nValid catalog values (use exactly these strings). `projects` lists the projects; `byProject[KEY]` has the valid types, priorities, subsystems, states, sprints, assignees (value = login) and custom fields of that project. After choosing the project, use ONLY values from that project's lists (an empty list means: leave that field out):\n{$catalogJson}"
-            .self::linkedIssue($draft);
+            .self::whoBlock($who)
+            .self::linkedIssue($draft)
+            .self::contextBlock($context);
+    }
+
+    /**
+     * Who is on the other side of the chat: the signed-in YouTrack account. So "assign it to me", "my issues" and the like work
+     * from the first message, and the answers can address the person by name.
+     *
+     * @param  ?array{name?:?string,login?:?string,email?:?string}  $who
+     */
+    public static function whoBlock(?array $who): string
+    {
+        $name = trim((string) ($who['name'] ?? ''));
+        if ($name === '' && blank($who['login'] ?? null)) {
+            return '';
+        }
+        $line = $name !== '' ? $name : $who['login'];
+        if (filled($who['email'] ?? null)) {
+            $line .= ' <'.$who['email'].'>';
+        }
+        $login = filled($who['login'] ?? null)
+            ? "Their YouTrack login is `{$who['login']}`: when they say \"me\", \"mim\", \"eu\", \"assign it to me\" or \"atribui-me\", set `assignee` to that login (it must be in the project's `assignees` list of the catalog; if it is not, say they are not in that project's team instead of guessing). When you ask who to assign, offer them first (\"mim\") if they are in that list."
+            : 'Their YouTrack login is unknown, so you cannot resolve "me" as an assignee on your own: ask who they mean.';
+
+        return <<<TXT
+
+
+The person you are talking to is signed in with this YouTrack account: {$line}. {$login} Address them by their first name when it is natural; do not announce that you know who they are. Never guess their gender from their name: use neutral wording (in Portuguese e.g. \"a sessão está iniciada com a conta de X\", never \"autenticada/autenticado\").
+TXT;
+    }
+
+    /**
+     * The issue this chat is linked to (created from it, or picked by the user): "change it", "close it" and the like mean this
+     * one. `$issue` carries its current fields, fetched fresh for every message.
+     */
+    public static function contextBlock(?array $issue): string
+    {
+        if (blank($issue['key'] ?? null)) {
+            return '';
+        }
+        $fields = json_encode(array_filter($issue, fn ($v, $k) => $k !== 'url' && filled($v), ARRAY_FILTER_USE_BOTH), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+
+        return <<<TXT
+
+
+Conversation context: this chat is linked to the YouTrack issue {$issue['key']}. Its current fields:
+{$fields}
+Rules for the context issue:
+- Whenever the user asks to change, assign, prioritise, close, resolve, reopen or otherwise act on "the issue" / "it" / "this" without naming another issue, they mean {$issue['key']}: call `update_issue` with `issue_id` "{$issue['key']}" right away. Do not call find_issues and do not ask which issue.
+- To close or resolve it, set `state` to the project's state that means done: choose it from the `states` list of the project in the catalog (e.g. Done, Fixed, Resolved, Closed, Concluído). To reopen it, choose the state that means open/to do. If more than one state fits, or none does, ask which one (with quick replies) instead of guessing.
+- This also applies when the issue was created from this conversation's draft: state changes always go through `update_issue`; other field changes on it follow the usual rules.
+- If the user clearly talks about ANOTHER issue (names another key or title), use that one instead. If they describe a new, different problem, it is a new issue as usual; the context stays.
+- Never claim the issue was changed unless you called `update_issue` in this turn.
+TXT;
     }
 
     /** The issue created from this conversation, so "altera o issue" knows which one is meant. */
@@ -71,17 +136,19 @@ TXT;
             .json_encode($draft, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     }
 
-    public static function withDraft(?array $draft, array $catalog): string
+    public static function withDraft(?array $draft, array $catalog, ?array $context = null, ?array $who = null): string
     {
         $catalogJson = json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        $languageRule = self::LANGUAGE_RULE;
+        $languageRule = self::LANGUAGE_RULE."\n\n".self::STYLE_RULES;
         $editRules = self::EDIT_RULES;
         $quickRules = self::QUICK_REPLY_RULES;
         $batchRules = self::BATCH_RULES;
+        $lookupRules = self::LOOKUP_RULES;
         $fieldRules = self::FIELD_RULES."\n";
         $assigneeRule = <<<'RULE'
   - ASSIGNEE QUESTION: whenever you present or update the draft and the current draft has no assignee (and the user did not just decline), the `message` MUST end with a short question asking whether they want to assign someone, naming the people available in the catalog (use their labels). If the user answers with a name, call the tool again with `assignee` set to that person's login; if they decline ("no", "nobody", "leave it"), do not ask again.
 RULE."\n";
+        $contextBlock = self::whoBlock($who).self::contextBlock($context);
         $draftJson = $draft ? json_encode($draft, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) : 'none yet';
 
         return <<<PROMPT
@@ -101,6 +168,8 @@ Behaviour:
 
 {$batchRules}
 
+{$lookupRules}
+
 {$quickRules}
 
 - The issue created from THIS conversation's draft (if the draft below has an `issue_key`) is edited through `update_issue_draft` (the user confirms saving with the button): when the user corrects it, call `update_issue_draft` with the changed fields. For any OTHER existing issue use `update_issue`.
@@ -109,7 +178,7 @@ Valid catalog values (use exactly these strings). `projects` lists the projects;
 {$catalogJson}
 
 Current draft (JSON):
-{$draftJson}
+{$draftJson}{$contextBlock}
 PROMPT;
     }
 
@@ -207,10 +276,27 @@ PROMPT;
     {
         return [
             'name' => 'find_issues',
-            'description' => 'Search YouTrack issues (newest first, max 8) to identify the one the user means. Returns key, summary, project, type, priority, assignee and state.',
+            'description' => 'Search YouTrack issues (newest first), also to list them for the user or to identify the one they mean. Returns `total` (all that match), the page shown, `has_more`, and for each issue key, summary, project, type, priority, assignee and state. Use `page` for more.',
             'input_schema' => [
                 'type' => 'object',
-                'properties' => ['query' => ['type' => 'string', 'description' => 'Search words from the title/description, optionally with YouTrack syntax such as `project: DEV`.']],
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'Search words and/or YouTrack syntax, e.g. `for: me #Unresolved`, `project: DEV State: {In Progress}`. Empty = all issues.'],
+                    'page' => ['type' => 'integer', 'minimum' => 1, 'description' => 'Page number, starting at 1.'],
+                    'limit' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 50, 'description' => 'Issues per page (default 8 to identify one issue; use 50 to list).'],
+                ],
+                'required' => ['query'],
+            ],
+        ];
+    }
+
+    public static function countIssuesTool(): array
+    {
+        return [
+            'name' => 'count_issues',
+            'description' => 'Exact number of YouTrack issues matching a query, over all projects the user can see unless the query names a project. Use it for "how many…" questions instead of listing.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => ['query' => ['type' => 'string', 'description' => 'YouTrack search, e.g. `for: me #Unresolved` (assigned to the user, not done), `project: DEV #Unresolved`, `Priority: Critical #Unresolved`.']],
                 'required' => ['query'],
             ],
         ];

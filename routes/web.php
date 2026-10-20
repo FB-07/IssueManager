@@ -33,6 +33,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/attachments/{attachment}', [AttachmentController::class, 'update'])->whereNumber('attachment');
         Route::post('/conversations', [ConversationController::class, 'store']);
         Route::delete('/conversations', [ConversationController::class, 'destroyMany']);
+        Route::put('/conversations/{conversation}/context', [ConversationController::class, 'context'])->whereNumber('conversation');
         Route::get('/conversations/{conversation}', [ConversationController::class, 'show'])->whereNumber('conversation');
         Route::patch('/conversations/{conversation}', [ConversationController::class, 'update'])->whereNumber('conversation');
         Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->whereNumber('conversation');
