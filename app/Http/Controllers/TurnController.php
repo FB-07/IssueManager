@@ -94,13 +94,12 @@ class TurnController extends Controller
             // complete (the app creates it right away); an incomplete draft still shows the card so it can be filled in
             $direct = $patch && ! empty($reply['direct']) && $draft->missingFields() === [];
 
-            // no confirmation window in this mode, so a probable duplicate must not be created behind the user's back:
-            // the editable card is shown instead (with the look-alikes) and the user decides
-            $held = $direct && blank($draft->issue_key)
-                && collect($similar->find($draft->project, $draft->summary, $draft->description))->contains('duplicate', true);
-            if ($held) {
+            // no confirmation window in this mode, so an issue that looks like an existing one must not be created behind the
+            // user's back: the editable card is shown instead (with the look-alikes) and the user decides
+            $found = $direct && blank($draft->issue_key) ? $similar->find($draft->project, $draft->summary, $draft->description) : [];
+            if ($found) {
                 $direct = false;
-                $reply['text'] = rtrim($reply['text'])."\n\n".__('ui.chat.duplicate_held');
+                $reply['text'] = rtrim($reply['text'])."\n\n".__(collect($found)->contains('duplicate', true) ? 'ui.chat.duplicate_held' : 'ui.chat.similar_held');
             }
 
             // like the single issue card, every file sent in the conversation (this message's or an earlier one's) is ticked

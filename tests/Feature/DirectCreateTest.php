@@ -46,8 +46,17 @@ it('holds the creation and shows the editable card when an issue with the same t
     Http::assertNotSent(fn ($r) => $r->method() === 'POST' && str_contains($r->url(), 'api/issues'));
 });
 
-it('does not hold the creation for a mere look-alike', function () {
+it('also holds the creation, with a softer message, for a mere look-alike', function () {
     $row = ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Pagamento multibanco com erro intermitente em produção hoje', 'description' => '', 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+
+    $assistant = directTurn($this, [$row])->json('messages.1');
+
+    expect($assistant['meta']['card'] ?? null)->toBeTrue()->and($assistant['meta'])->not->toHaveKey('direct')
+        ->and($assistant['body'])->toContain(__('ui.chat.similar_held'))->not->toContain(__('ui.chat.duplicate_held'));
+});
+
+it('creates right away when the only candidates are unrelated', function () {
+    $row = ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Faturas mensais do departamento financeiro', 'description' => '', 'project' => ['shortName' => 'DEV'], 'customFields' => []];
 
     $assistant = directTurn($this, [$row])->json('messages.1');
 

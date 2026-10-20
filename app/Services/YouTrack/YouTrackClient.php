@@ -190,7 +190,7 @@ class YouTrackClient
      */
     public function similar(string $project, string $summary, int $limit = 5, ?string $description = null): array
     {
-        $keywords = array_slice($this->keywords($summary), 0, 6);
+        $words = $this->keywords($summary);
         $found = [];
         $add = function (string $query) use (&$found, $limit) {
             $rows = Cache::remember($this->cacheKey('similar.'.md5($query.$limit)), 60, fn () => $this->search($query, 1, $limit, false)['issues']);
@@ -201,8 +201,18 @@ class YouTrackClient
             return $rows !== [];
         };
 
-        if ($keywords) {
-            $add($this->buildQuery(['project' => $project, 'q' => implode(' ', $keywords)]));
+        // Every word of a long title rarely appears in an older issue about the same thing, so besides all the words (up to 6)
+        // also search with only its 3 and its 2 longest ones; the caller scores the candidates and drops the unrelated ones.
+        $byLength = $words;
+        usort($byLength, fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+        $queries = $words ? [implode(' ', array_slice($words, 0, 6))] : [];
+        foreach ([3, 2] as $n) {
+            if (count($words) > $n) {
+                $queries[] = implode(' ', array_slice($byLength, 0, $n));
+            }
+        }
+        foreach (array_unique($queries) as $q) {
+            $add($this->buildQuery(['project' => $project, 'q' => $q]));
         }
 
         // an older issue about the same thing may be titled differently: also look for the draft's longest description words,

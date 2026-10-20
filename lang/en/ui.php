@@ -64,6 +64,7 @@ return [
     ],
 
     'chat' => [
+        'similar_held' => 'Before creating it: similar issues already exist. Check the draft below; nothing was created.',
         'duplicate_held' => 'Before creating it: an issue that looks like a duplicate already exists. Check the draft below; nothing was created.',
         'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
         'updating' => 'Updating the issue in YouTrack…', 'updating_issue' => 'Updating the issue in YouTrack.',

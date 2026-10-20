@@ -21,8 +21,16 @@ class SimilarIssues
     /** Words a description needs before it is compared at all (shorter ones are mostly shared boilerplate). */
     private const MIN_TEXT_WORDS = 8;
 
-    /** Candidates read from YouTrack per search. */
-    private const CANDIDATES = 8;
+    /** Candidates read from YouTrack per search (the searches are loose, so most are scored and dropped). */
+    private const CANDIDATES = 15;
+
+    /** A candidate is shown when its title or its description is at least this much (%) the same... */
+    private const MIN_TITLE = 25;
+
+    private const MIN_TEXT = 35;
+
+    /** ...and at most this many are shown (the closest ones). */
+    private const SHOW = 6;
 
     public function __construct(private readonly YouTrackClient $yt) {}
 
@@ -65,9 +73,10 @@ class SimilarIssues
             ];
         }, $issues);
 
+        $out = array_filter($out, fn ($i) => $i['duplicate'] || $i['title_match'] >= self::MIN_TITLE || ($i['description_match'] !== null && $i['description_match'] >= self::MIN_TEXT));
         usort($out, fn ($a, $b) => [$b['duplicate'], $b['match']] <=> [$a['duplicate'], $a['match']]);
 
-        return $out;
+        return array_slice(array_values($out), 0, self::SHOW);
     }
 
     /** @return list<string> distinct lowercase words of a text, without the app's title prefix */
