@@ -93,6 +93,11 @@ class TurnController extends Controller
             // complete (the app creates it right away); an incomplete draft still shows the card so it can be filled in
             $direct = $patch && ! empty($reply['direct']) && $draft->missingFields() === [];
 
+            // like the single issue card, every file sent in the conversation (this message's or an earlier one's) is ticked
+            // for each proposal; the user unticks what a given issue should not carry
+            $fromFiles = $batch ? $c->attachments()->orderBy('id')->pluck('id')->all() : [];
+            $batch = array_map(fn ($item) => $item + ['attachments' => $fromFiles], $batch);
+
             $assistant = $c->messages()->create([
                 'role' => 'assistant',
                 'kind' => 'text',

@@ -9,6 +9,7 @@ const MAX_BYTES = 10 * 1024 * 1024;
 
 let similarTimer;
 let batchSimilarTimer;
+const batchSaveTimers = new Map();
 const batchScopes = new Map();
 const EMPTY_META = { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
 
@@ -94,6 +95,8 @@ export function createStore(boot) {
             document.documentElement.lang = this.locale;
             window.addEventListener('keydown', (e) => e.key === 'Escape' && this.selectMode && !this.confirmBulk && this.cancelSelect());
             window.addEventListener('popstate', () => this.routeFromLocation());
+            document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && this.flushBatches());
+            window.addEventListener('pagehide', () => this.flushBatches());
             window.addEventListener('dragover', (e) => {
                 if (e.dataTransfer?.types?.includes('Files')) {
                     e.preventDefault();
@@ -202,6 +205,7 @@ export function createStore(boot) {
             this.advancedOpen = false;
             this.cardTab = 'edit';
             this.pending.clear();
+            this.flushBatches();
             this.batches = {};
         },
         newChat() {
@@ -221,6 +225,7 @@ export function createStore(boot) {
                 const data = await api('GET', `/api/conversations/${id}`);
                 this.activeId = data.conversation.id;
                 this.messages = data.messages;
+                this.flushBatches();
                 this.draft = data.draft;
                 this.batches = {};
                 this.advancedOpen = false;
@@ -576,14 +581,18 @@ export function createStore(boot) {
         batchState(m) {
             if (!this.batches[m.id]) {
                 this.batches[m.id] = {
+                    conv: this.activeId, // where to save it, even after the user moved to another conversation
+                    mid: m.id,
+                    dirty: false,
                     busy: false,
                     viewing: null, // index of an accepted proposal opened for editing
-                    history: [], // decided indexes, newest last (for "back")
+                    history: this.batchItems(m).map((it, i) => (it.status === 'pending' && it.decision ? i : null)).filter((i) => i !== null), // decided indexes, newest last (for "back")
                     rows: this.batchItems(m).map((it) => ({
                         ...it,
                         labels: [...(it.labels ?? [])],
                         custom_fields: { ...(it.custom_fields ?? {}) },
-                        decision: it.status === 'created' ? 'accepted' : it.status === 'discarded' ? 'rejected' : null,
+                        attachments: [...(it.attachments ?? [])],
+                        decision: it.status === 'created' ? 'accepted' : it.status === 'discarded' ? 'rejected' : (it.decision ?? null),
                         similar: [], similarKey: null, dupIds: '', dupAck: false, // look-alikes of this proposal (client only)
                     })),
                 };
@@ -591,6 +600,37 @@ export function createStore(boot) {
             }
 
             return this.batches[m.id];
+        },
+        /** The review changed (an edit or a decision): saved on the server after a short pause, so a reload keeps it. */
+        batchTouch(m) {
+            const st = this.batchState(m);
+            st.dirty = true;
+            clearTimeout(batchSaveTimers.get(st.mid));
+            batchSaveTimers.set(st.mid, setTimeout(() => this.batchSave(st), 700));
+        },
+        async batchSave(st, { keepalive = false } = {}) {
+            clearTimeout(batchSaveTimers.get(st.mid));
+            if (!st.dirty || st.busy) return;
+            st.dirty = false;
+            const items = st.rows.map((r, index) => ({ r, index })).filter(({ r }) => r.status === 'pending').map(({ r, index }) => ({
+                index, summary: r.summary, description: r.description, project: r.project, type: r.type, priority: r.priority,
+                assignee: r.assignee ?? '', subsystem: r.subsystem ?? '', labels: r.labels ?? [], custom_fields: r.custom_fields ?? {}, attachments: r.attachments ?? [], decision: r.decision ?? null,
+            }));
+            if (!items.length) return;
+            try {
+                await api('PATCH', `/api/conversations/${st.conv}/messages/${st.mid}/batch`, { items }, { keepalive });
+            } catch (e) {
+                st.dirty = true; // tried again with the next change
+                if (!st.saveFailed) this.notify(this.t('batch.save_failed'), 'error');
+                st.saveFailed = true;
+
+                return;
+            }
+            st.saveFailed = false;
+        },
+        /** Before leaving the conversation or the page: nothing typed in the last moments may be lost. */
+        flushBatches() {
+            Object.values(this.batches).forEach((st) => st.dirty && this.batchSave(st, { keepalive: true }));
         },
         /** Index of the next proposal still to decide, or null when all are decided. */
         batchCursor(m) {
@@ -639,22 +679,49 @@ export function createStore(boot) {
                     get similarIssues() {
                         return row()?.similar ?? [];
                     },
+                    /** Files of the conversation that go to this proposal's issue. */
+                    hasAttachment(a) {
+                        return (row()?.attachments ?? []).includes(a.id);
+                    },
+                    get attachmentCount() {
+                        return (row()?.attachments ?? []).length;
+                    },
+                    get allAttachments() {
+                        const ids = self.conversationAttachments.map((a) => a.id);
+
+                        return ids.length > 0 && ids.every((id) => (row()?.attachments ?? []).includes(id));
+                    },
+                    toggleAllAttachments() {
+                        row().attachments = this.allAttachments ? [] : self.conversationAttachments.map((a) => a.id);
+                        self.batchTouch(m);
+                    },
+                    toggleAttachment(a) {
+                        const r = row();
+                        r.attachments = r.attachments.includes(a.id) ? r.attachments.filter((x) => x !== a.id) : [...r.attachments, a.id];
+                        self.batchTouch(m);
+                    },
                     get duplicates() {
                         return this.similarIssues.filter((x) => x.duplicate);
                     },
                     setField(field, value) {
                         if (field === 'project') self.batchSetProject(row(), value ?? '');
                         else row()[field] = value;
+                        self.batchTouch(m);
                     },
                     setCustom(key2, value) {
                         row().custom_fields = { ...row().custom_fields, [key2]: value };
+                        self.batchTouch(m);
                     },
                     addLabel(raw) {
                         const label = raw.trim().replace(/,$/, '');
-                        if (label && !row().labels.includes(label)) row().labels = [...row().labels, label];
+                        if (label && !row().labels.includes(label)) {
+                            row().labels = [...row().labels, label];
+                            self.batchTouch(m);
+                        }
                     },
                     removeLabel(label) {
                         row().labels = row().labels.filter((l) => l !== label);
+                        self.batchTouch(m);
                     },
                 });
             }
@@ -722,6 +789,7 @@ export function createStore(boot) {
             st.rows[i].decision = decision;
             if (st.viewing === i) st.viewing = null;
             st.history = [...st.history.filter((x) => x !== i), i];
+            this.batchTouch(m);
 
             return true;
         },
@@ -734,6 +802,7 @@ export function createStore(boot) {
             st.rows[i].decision = null;
             st.rows[i].error = null;
             st.viewing = null;
+            this.batchTouch(m);
         },
         /** Creates the accepted proposals (with the edits made in their cards) and discards the rejected ones. */
         async batchCreate(m) {
@@ -747,12 +816,14 @@ export function createStore(boot) {
                 return this.notify(this.t('batch.missing'), 'error');
             }
             await this.batchSend(m, {
-                create: accepted.map(({ r, index }) => ({ index, summary: r.summary, description: r.description, project: r.project, type: r.type, priority: r.priority, assignee: r.assignee ?? '', subsystem: r.subsystem ?? '', labels: r.labels ?? [], custom_fields: r.custom_fields ?? {} })),
+                create: accepted.map(({ r, index }) => ({ index, summary: r.summary, description: r.description, project: r.project, type: r.type, priority: r.priority, assignee: r.assignee ?? '', subsystem: r.subsystem ?? '', labels: r.labels ?? [], custom_fields: r.custom_fields ?? {}, attachments: r.attachments ?? [] })),
                 discard: st.rows.map((r, index) => ({ r, index })).filter(({ r }) => r.status === 'pending' && r.decision === 'rejected').map(({ index }) => index),
             });
         },
         async batchSend(m, body) {
             const st = this.batchState(m);
+            clearTimeout(batchSaveTimers.get(st.mid));
+            st.dirty = false;
             st.busy = true;
             try {
                 const res = await api('POST', `/api/conversations/${this.activeId}/messages/${m.id}/batch`, body);
@@ -763,7 +834,7 @@ export function createStore(boot) {
                 st.rows = res.message.meta.batch.items.map((it, i) =>
                     it.status === 'pending' && old[i]
                         ? { ...old[i], error: it.error ?? null }
-                        : { ...it, labels: it.labels ?? [], custom_fields: it.custom_fields ?? {}, decision: it.status === 'created' ? 'accepted' : 'rejected' },
+                        : { ...it, labels: it.labels ?? [], custom_fields: it.custom_fields ?? {}, attachments: it.attachments ?? [], decision: it.status === 'created' ? 'accepted' : 'rejected' },
                 );
                 st.viewing = null;
                 const items = res.message.meta.batch.items;

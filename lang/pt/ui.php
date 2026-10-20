@@ -134,6 +134,9 @@ return [
     ],
 
     'batch' => [
+        'attachments_one' => '1 anexo',
+        'attachments_count' => ':n anexos', 'attachments_hint' => 'Os ficheiros marcados são anexados a este issue quando for criado.',
+        'save_failed' => 'Não foi possível guardar a revisão; vai tentar de novo.',
         'duplicate_blocked' => 'Isto parece um duplicado. Marca "Verifiquei: não é um duplicado" para aprovar.',
         'approve' => 'Aprovar', 'reject' => 'Rejeitar', 'back' => 'Anular a última decisão', 'close' => 'Fechar', 'remaining' => 'Faltam :n para rever', 'all_reviewed' => 'Tudo revisto', 'finished' => 'Concluído', 'summary' => ':a aprovados · :r rejeitados', 'accepted_title' => 'Aprovados (:n)', 'finish' => 'Concluir',
         'counter' => 'Issue :i de :n', 'prev' => 'Anterior', 'next' => 'Seguinte', 'include' => 'Incluir', 'created' => 'Criado', 'discarded' => 'Descartado',

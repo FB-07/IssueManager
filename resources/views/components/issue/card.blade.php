@@ -175,7 +175,35 @@
             </div>
         </section>
 
-        {{-- attachments that go to the YouTrack issue --}}
+        {{-- attachments of a batch proposal: each issue picks its own files from the conversation --}}
+        @if($batch)
+        <section x-show="s.conversationAttachments.length" aria-labelledby="card-atts-batch">
+            <div class="mb-2.5 flex items-center gap-2">
+                <h4 id="card-atts-batch" class="text-[11px] font-semibold uppercase tracking-wider text-faint" x-text="s.t('card.attachments_title')"></h4>
+                <span class="badge bg-surface-3 text-muted" x-text="s.t({{ $c }}.attachmentCount === 1 ? 'batch.attachments_one' : 'batch.attachments_count', { n: {{ $c }}.attachmentCount })"></span>
+                <button type="button" class="ml-auto text-xs font-medium text-accent hover:underline" @click="{{ $c }}.toggleAllAttachments()" x-text="{{ $c }}.allAttachments ? s.t('batch.select_none') : s.t('batch.select_all')"></button>
+            </div>
+            <ul class="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                <template x-for="a in s.conversationAttachments" x-bind:key="a.id">
+                    <li>
+                        <label class="group relative block cursor-pointer overflow-hidden rounded-xl border bg-surface transition"
+                               x-bind:class="{{ $c }}.hasAttachment(a) ? 'border-line-strong' : 'border-line opacity-60 hover:opacity-100'">
+                            <div class="flex h-20 items-center justify-center" x-bind:class="a.kind === 'image' ? 'bg-white' : 'bg-surface-2'">
+                                <template x-if="a.kind === 'image'"><img x-bind:src="a.url" x-bind:alt="a.name" class="size-full object-contain p-1"></template>
+                                <template x-if="a.kind !== 'image'"><span class="size-7 text-muted"><x-ui.icon name="file" class="size-full" /></span></template>
+                            </div>
+                            <input type="checkbox" class="absolute left-2 top-2 size-4 rounded shadow ring-2 ring-surface accent-[var(--accent)]" x-bind:checked="{{ $c }}.hasAttachment(a)" @change="{{ $c }}.toggleAttachment(a)" x-bind:aria-label="a.name">
+                            <div class="px-2.5 py-2">
+                                <p class="truncate text-xs font-medium" x-text="a.name"></p>
+                                <p class="mt-0.5 text-[11px] text-faint" x-text="s.size(a.size ?? 0)"></p>
+                            </div>
+                        </label>
+                    </li>
+                </template>
+            </ul>
+            <p class="mt-2 text-xs text-muted" x-text="s.t('batch.attachments_hint')"></p>
+        </section>
+        @endif
         @unless($batch)
         <section x-show="s.conversationAttachments.length" aria-labelledby="card-atts">
             <div class="mb-2.5 flex items-center gap-2">

@@ -11,7 +11,7 @@ export async function signOutAndReturnToLogin() {
 }
 
 /** Thin fetch wrapper for the Laravel JSON API. Send a FormData as `body` for uploads. */
-export async function http(method, url, body) {
+export async function http(method, url, body, { keepalive = false } = {}) {
     const headers = { Accept: 'application/json', 'X-CSRF-TOKEN': csrf(), 'X-Requested-With': 'XMLHttpRequest' };
     let payload;
     if (body instanceof FormData) {
@@ -21,7 +21,7 @@ export async function http(method, url, body) {
         payload = JSON.stringify(body);
     }
 
-    const res = await fetch(url, { method, headers, body: payload, credentials: 'same-origin' });
+    const res = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', keepalive });
 
     if (res.status === 401) {
         window.location.href = '/login';

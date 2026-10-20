@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Models\IssueDraft;
+use App\Models\Conversation;
+use App\Services\AttachmentUploader;
 use App\Services\DraftPatch;
 use App\Services\SimilarIssues;
 use App\Services\YouTrack\YouTrackClient;
@@ -45,7 +47,7 @@ class BatchController extends Controller
         return $items;
     }
 
-    public function __invoke(Request $request, int $conversation, int $message, YouTrackClient $yt)
+    public function __invoke(Request $request, int $conversation, int $message, YouTrackClient $yt, AttachmentUploader $uploader)
     {
         $c = $this->conversation($request, $conversation);
         $m = $c->messages()->whereKey($message)->firstOrFail();
@@ -64,6 +66,8 @@ class BatchController extends Controller
             'create.*.subsystem' => ['nullable', 'string', 'max:120'],
             'create.*.labels' => ['nullable', 'array', 'max:20'],
             'create.*.custom_fields' => ['nullable', 'array'],
+            'create.*.attachments' => ['nullable', 'array', 'max:10'],
+            'create.*.attachments.*' => ['integer'],
             'discard' => ['array', 'max:'.self::MAX_ITEMS],
             'discard.*' => ['integer', 'min:0'],
         ]);
@@ -85,14 +89,19 @@ class BatchController extends Controller
             }
 
             try {
-                $item = $this->merge($items[$i], $edit, $yt);
+                $item = $this->merge($items[$i], $edit, $yt, $c);
                 if ($missing = array_values(array_filter(IssueDraft::REQUIRED, fn ($f) => blank($item[$f] ?? null)))) {
                     $items[$i] = ['error' => __('ui.errors.missing_fields').' ('.implode(', ', $missing).')', 'missing' => $missing] + $item;
 
                     continue;
                 }
                 $result = $yt->create($item);
-                $items[$i] = ['status' => 'created', 'issue_key' => $result['id'], 'issue_url' => $result['url']] + array_diff_key($item, ['error' => 1, 'missing' => 1]);
+                // the files ticked for this proposal go to the new issue (one failing file never undoes the issue)
+                $files = $uploader->upload($yt, $result['id'], $c->attachments()->whereIn('id', $item['attachments'] ?? [])->orderBy('id')->get(), mark: false);
+                $items[$i] = [
+                    'status' => 'created', 'issue_key' => $result['id'], 'issue_url' => $result['url'],
+                    'attachments_sent' => $files['sent'], 'attachments_failed' => $files['failed'],
+                ] + array_diff_key($item, ['error' => 1, 'missing' => 1]);
             } catch (TrackerException $e) {
                 $items[$i] = ['error' => $e->getMessage()] + $items[$i];
             }
@@ -103,6 +112,61 @@ class BatchController extends Controller
         $c->touch();
 
         return ['message' => Presenter::message($m->fresh()->load('attachments'))];
+    }
+
+    /**
+     * Keeps the review in progress: the edits made to the pending proposals and which ones were approved or rejected, so a
+     * reload (or another device) picks up where the user left off. Nothing is created here.
+     */
+    public function save(Request $request, int $conversation, int $message, YouTrackClient $yt)
+    {
+        $c = $this->conversation($request, $conversation);
+        $m = $c->messages()->whereKey($message)->firstOrFail();
+        $meta = $m->meta ?? [];
+        $items = $meta['batch']['items'] ?? abort(404);
+
+        $data = $request->validate([
+            'items' => ['required', 'array', 'max:'.self::MAX_ITEMS],
+            'items.*.index' => ['required', 'integer', 'min:0'],
+            'items.*.summary' => ['nullable', 'string', 'max:255'],
+            'items.*.description' => ['nullable', 'string', 'max:50000'],
+            'items.*.project' => ['nullable', 'string', 'max:50'],
+            'items.*.type' => ['nullable', 'string', 'max:60'],
+            'items.*.priority' => ['nullable', 'string', 'max:60'],
+            'items.*.assignee' => ['nullable', 'string', 'max:120'],
+            'items.*.subsystem' => ['nullable', 'string', 'max:120'],
+            'items.*.labels' => ['nullable', 'array', 'max:20'],
+            'items.*.custom_fields' => ['nullable', 'array'],
+            'items.*.attachments' => ['nullable', 'array', 'max:10'],
+            'items.*.attachments.*' => ['integer'],
+            'items.*.decision' => ['nullable', 'in:accepted,rejected'],
+        ]);
+        if (! YouTrackClient::configured()) {
+            return response()->json(['message' => __('ui.errors.tracker_not_configured')], 503);
+        }
+
+        foreach ($data['items'] as $edit) {
+            $i = $edit['index'];
+            if (($items[$i]['status'] ?? null) !== 'pending') {
+                continue; // created or discarded proposals are final
+            }
+
+            try {
+                $item = $this->merge($items[$i], $edit, $yt, $c);
+            } catch (TrackerException $e) {
+                return $e->response();
+            }
+            $item['decision'] = $edit['decision'] ?? null;
+            if (isset($items[$i]['error']) && $item['decision'] === 'accepted') {
+                $item['error'] = $items[$i]['error']; // a failed creation keeps its message until the user changes their mind
+            }
+            $items[$i] = $item;
+        }
+
+        $meta['batch']['items'] = array_values($items);
+        $m->update(['meta' => $meta]);
+
+        return ['saved' => true];
     }
 
     /** Look-alikes of one proposal, from the text as currently edited in its card (nothing is saved until the batch is created). */
@@ -119,13 +183,19 @@ class BatchController extends Controller
     }
 
     /** The stored proposal with the user's edits applied (only values valid for the project survive). */
-    private function merge(array $stored, array $edit, YouTrackClient $yt): array
+    private function merge(array $stored, array $edit, YouTrackClient $yt, Conversation $c): array
     {
+        // files of this conversation only (an id from another conversation is simply dropped)
+        $attachments = array_key_exists('attachments', $edit)
+            ? $c->attachments()->whereIn('id', $edit['attachments'] ?? [])->orderBy('id')->pluck('id')->all()
+            : ($stored['attachments'] ?? []);
+
         $edit = array_intersect_key($edit, array_flip(self::FIELDS));
         $patch = DraftPatch::sanitize($edit, $stored['project'] ?? null, $yt) ?? [];
 
-        // fields the user cleared on purpose (empty string) must not come back from the stored proposal
-        $cleared = array_keys(array_filter($edit, fn ($v) => $v === null || $v === ''));
+        // fields the user cleared on purpose (empty string, or an emptied list) must not come back from the stored proposal
+        $cleared = array_keys(array_filter($edit, fn ($v) => $v === null || $v === '' || $v === []));
+        $cleared = array_values(array_diff($cleared, ['labels'])); // an empty label list is already what sanitize returns
         $base = array_diff_key($stored, array_flip($cleared));
 
         if (($patch['project'] ?? $base['project'] ?? null) !== ($base['project'] ?? null)) {
@@ -133,6 +203,6 @@ class BatchController extends Controller
             $base = array_diff_key($base, array_flip(['type', 'priority', 'assignee', 'subsystem', 'custom_fields']));
         }
 
-        return array_diff_key($patch + $base, ['error' => 1, 'missing' => 1]);
+        return ['attachments' => $attachments] + array_diff_key($patch + $base, ['error' => 1, 'missing' => 1, 'attachments' => 1]);
     }
 }

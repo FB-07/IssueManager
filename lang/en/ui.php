@@ -134,6 +134,9 @@ return [
     ],
 
     'batch' => [
+        'attachments_one' => '1 attachment',
+        'attachments_count' => ':n attachments', 'attachments_hint' => 'The ticked files are added to this issue when it is created.',
+        'save_failed' => 'Could not save your review; it will be retried.',
         'duplicate_blocked' => 'This looks like a duplicate. Tick "I checked: this is not a duplicate" to approve it.',
         'approve' => 'Approve', 'reject' => 'Reject', 'back' => 'Undo last decision', 'close' => 'Close', 'remaining' => ':n left to review', 'all_reviewed' => 'All reviewed', 'finished' => 'Done', 'summary' => ':a approved · :r rejected', 'accepted_title' => 'Approved (:n)', 'finish' => 'Finish',
         'counter' => 'Issue :i of :n', 'prev' => 'Previous', 'next' => 'Next', 'include' => 'Include', 'created' => 'Created', 'discarded' => 'Discarded',

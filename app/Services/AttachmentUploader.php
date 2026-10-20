@@ -8,14 +8,17 @@ use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
 
-/** Sends conversation attachments to a YouTrack issue; one failing file never blocks the others (or the issue). */
+/**
+ * Sends conversation attachments to a YouTrack issue; one failing file never blocks the others (or the issue).
+ * `$mark` records the issue on the attachment (single-issue flow); a batch sends one file to several issues, so it does not.
+ */
 class AttachmentUploader
 {
     /**
      * @param  Collection<int,Attachment>  $attachments
      * @return array{sent:list<string>,failed:list<string>}
      */
-    public function upload(YouTrackClient $yt, string $issueKey, Collection $attachments): array
+    public function upload(YouTrackClient $yt, string $issueKey, Collection $attachments, bool $mark = true): array
     {
         $sent = [];
         $failed = [];
@@ -26,7 +29,9 @@ class AttachmentUploader
                     throw new TrackerException('missing file');
                 }
                 $yt->attach($issueKey, $a->name, (string) $a->mime, Storage::disk('local')->get($a->path));
-                $a->update(['youtrack_issue' => $issueKey]);
+                if ($mark) {
+                    $a->update(['youtrack_issue' => $issueKey]);
+                }
                 $sent[] = $a->name;
             } catch (TrackerException) {
                 $failed[] = $a->name;

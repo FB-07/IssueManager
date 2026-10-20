@@ -122,6 +122,13 @@
                             <span class="chip" x-show="a.r.type" x-text="s.lbl('type', a.r.type)"></span>
                             <span class="chip" x-show="a.r.priority" x-text="s.lbl('priority', a.r.priority)"></span>
                         </div>
+                        <p class="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted" x-show="a.r.status === 'created' ? (a.r.attachments_sent ?? []).length : (a.r.attachments ?? []).length">
+                            <x-ui.icon name="paperclip" class="size-3.5" />
+                            <span x-text="s.t((a.r.status === 'created' ? a.r.attachments_sent.length : a.r.attachments.length) === 1 ? 'batch.attachments_one' : 'batch.attachments_count', { n: a.r.status === 'created' ? a.r.attachments_sent.length : a.r.attachments.length })"></span>
+                        </p>
+                        <p class="mt-1 flex items-start gap-1.5 text-xs text-warn" x-show="(a.r.attachments_failed ?? []).length">
+                            <x-ui.icon name="alert" class="mt-px size-3.5 shrink-0" /><span class="line-clamp-2" x-text="s.t('result.attachments_failed', { names: (a.r.attachments_failed ?? []).join(', ') })"></span>
+                        </p>
                         <p class="mt-2 flex items-start gap-1.5 text-xs text-danger" x-show="a.r.status === 'pending' && a.r.error" role="alert">
                             <x-ui.icon name="alert" class="mt-px size-3.5 shrink-0" /><span class="line-clamp-3" x-text="a.r.error"></span>
                         </p>
