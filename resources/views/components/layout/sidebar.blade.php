@@ -31,8 +31,8 @@
 
         <div class="sticky top-0 z-10 -mx-3 bg-surface px-5 pb-1 pt-2" x-show="s.conversations.length > 0">
             <div class="flex items-center justify-between" x-show="!s.selectMode">
-                <span class="text-[11px] font-medium uppercase tracking-wider text-faint" x-text="s.t('nav.history')"></span>
-                <button type="button" class="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-fg" @click="s.startSelect()" x-text="s.t('nav.select')"></button>
+                <span class="text-[13px] font-semibold  uppercase tracking-wider text-muted" x-text="s.t('nav.history')"></span>
+                <button type="button" class="rounded-md px-1.5 py-0.5 text-[13px] font-medium text-muted transition hover:bg-surface-2 hover:text-fg" @click="s.startSelect()" x-text="s.t('nav.select')"></button>
             </div>
             <div class="flex items-center justify-between gap-2" x-show="s.selectMode" x-cloak>
                 <button type="button" class="flex items-center gap-2 rounded-md py-0.5 text-xs font-medium text-muted transition hover:text-fg" role="checkbox" x-bind:aria-checked="s.allSelected" @click="s.toggleSelectAll()">
@@ -47,7 +47,7 @@
         </div>
         <template x-for="g in s.groupedConversations" x-bind:key="g.key">
         <div>
-        <p class="px-2 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-wider text-faint" x-text="s.t('nav.group_' + g.key)"></p>
+        <p class="px-2 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted" x-text="s.t('nav.group_' + g.key)"></p>
         <ul class="space-y-0.5">
             <template x-for="c in g.items" x-bind:key="c.id">
                 <li class="group relative">
