@@ -26,7 +26,7 @@ class TurnController extends Controller
 
         $data = $request->validate([
             'body' => ['nullable', 'string', 'max:20000'],
-            'assistant' => ['required', 'string', 'max:100000'],
+            'assistant' => ['required', 'string', 'max:600000'], // JSON with the (possibly very long) answer
             'files' => ['array', 'max:10'],
             'files.*' => ['file', 'max:10240', 'mimes:'.self::MIMES],
         ]);

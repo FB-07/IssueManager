@@ -22,6 +22,13 @@ class ChatController extends Controller
 {
     private const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 
+    private const MAX_USER_CHARS = 30000;
+
+    private const MAX_ASSISTANT_CHARS = 400000;
+
+    /** Earlier answers longer than this are cut when sent back to the model (it can look the data up again if it needs it). */
+    private const KEEP_ASSISTANT_CHARS = 6000;
+
     private const TEXT_EXT = ['txt', 'md', 'log', 'json', 'csv', 'php', 'js', 'ts', 'css', 'html', 'vue', 'sql', 'yml', 'yaml'];
 
     public function __invoke(Request $request)
@@ -36,7 +43,14 @@ class ChatController extends Controller
             'p' => ['required', 'array'],
             'p.messages' => ['required', 'array', 'min:1', 'max:80'],
             'p.messages.*.role' => ['required', 'in:user,assistant'],
-            'p.messages.*.content' => ['required', 'string', 'max:30000'],
+            // what the user types is limited; what the assistant wrote earlier may be very long (a list of hundreds of issues) and
+            // is shortened below before it goes back to the model
+            'p.messages.*.content' => ['required', 'string', function (string $attribute, mixed $value, \Closure $fail) use ($payload) {
+                $role = $payload['messages'][(int) explode('.', $attribute)[2]]['role'] ?? 'user';
+                if (mb_strlen((string) $value) > ($role === 'assistant' ? self::MAX_ASSISTANT_CHARS : self::MAX_USER_CHARS)) {
+                    $fail(__('ui.errors.message_too_long', ['max' => $role === 'assistant' ? self::MAX_ASSISTANT_CHARS : self::MAX_USER_CHARS]));
+                }
+            }],
             'p.draft_enabled' => ['boolean'],
             'p.draft' => ['nullable', 'array'],
             'p.catalog' => ['nullable', 'array'],
@@ -133,10 +147,26 @@ class ChatController extends Controller
         }
     }
 
+    /**
+     * A very long earlier answer (say, a list of 568 issues) would be sent again with every new message, costing context and
+     * time for nothing: keep its beginning and end and say that the middle was left out.
+     */
+    private function shorten(string $text): string
+    {
+        $length = mb_strlen($text);
+        if ($length <= self::KEEP_ASSISTANT_CHARS) {
+            return $text;
+        }
+        $head = (int) (self::KEEP_ASSISTANT_CHARS * 0.75);
+        $tail = self::KEEP_ASSISTANT_CHARS - $head;
+
+        return mb_substr($text, 0, $head)."\n\n[… ".($length - self::KEEP_ASSISTANT_CHARS).' characters of this earlier answer were left out to save space; look the data up again if you need it …]'."\n\n".mb_substr($text, -$tail);
+    }
+
     /** @param list<UploadedFile> $files */
     private function buildMessages(array $history, array $files): array
     {
-        $out = array_map(fn ($m) => ['role' => $m['role'], 'content' => $m['content']], $history);
+        $out = array_map(fn ($m) => ['role' => $m['role'], 'content' => $m['role'] === 'assistant' ? $this->shorten($m['content']) : $m['content']], $history);
 
         $last = array_key_last($out);
         if ($out[$last]['role'] !== 'user') {
@@ -177,12 +207,12 @@ class ChatController extends Controller
      */
     private function relay(array $cfg, array $body, ?YouTrackClient $yt): void
     {
+        // A long list takes many rounds (pages of YouTrack results, each followed by the model): the default 30 s of PHP would
+        // kill the request, which the browser sees as a 502. Cap it at a few minutes instead.
+        @set_time_limit(300);
+
         $emit = function (string $event, array $data) {
-            echo "event: $event\ndata: ".json_encode($data, JSON_UNESCAPED_UNICODE)."\n\n";
-            if (ob_get_level() > 0) {
-                @ob_flush();
-            }
-            flush();
+            $this->write("event: $event\ndata: ".json_encode($data, JSON_UNESCAPED_UNICODE)."\n\n");
         };
 
         try {
@@ -200,7 +230,15 @@ class ChatController extends Controller
                 }
 
                 $lookups = array_filter($result['blocks'], fn ($b) => $b['type'] === 'tool_use' && in_array($b['name'], ClaudePrompt::SERVER_TOOLS, true));
-                if ($result['stop'] !== 'tool_use' || ! $lookups || ! $yt) {
+                $continues = $result['stop'] === 'tool_use' && $lookups && $yt && $round < 7;
+
+                // The text of a round is held back until the round is over: if the model then goes to look something up, what it
+                // said before ("Aqui está a lista:") is only narration and is dropped, so the user waits behind the dots and
+                // gets the complete answer, not an intro followed by a long pause. The answer itself is sent once it is ready.
+                if (! $continues && $result['text'] !== '') {
+                    $emit('text', ['t' => $result['text']]);
+                }
+                if (! $continues) {
                     break;
                 }
 
@@ -225,10 +263,30 @@ class ChatController extends Controller
         }
     }
 
+    private float $lastWrite = 0.0;
+
+    private function write(string $chunk): void
+    {
+        echo $chunk;
+        if (ob_get_level() > 0) {
+            @ob_flush();
+        }
+        flush();
+        $this->lastWrite = microtime(true);
+    }
+
+    /** The answer is held back while the model works, so say "still here" now and then: proxies cut connections that stay silent. */
+    private function keepAlive(): void
+    {
+        if (microtime(true) - $this->lastWrite > 5) {
+            $this->write(": keep-alive\n\n");
+        }
+    }
+
     /**
      * One streamed request to the model.
      *
-     * @return array{blocks:list<array<string,mixed>>,stop:?string}|null null after an error event
+     * @return array{blocks:list<array<string,mixed>>,stop:?string,text:string}|null null after an error event; `text` is what the model wrote in this round (not sent yet)
      */
     private function streamRound(array $cfg, array $body, callable $emit): ?array
     {
@@ -245,10 +303,11 @@ class ChatController extends Controller
             return null;
         }
 
-        $state = ['blocks' => [], 'stop' => null, 'failed' => false];
+        $state = ['blocks' => [], 'stop' => null, 'failed' => false, 'text' => []];
         $buffer = '';
         while (! $stream->eof()) {
             $buffer .= $stream->read(1024);
+            $this->keepAlive();
             while (($pos = strpos($buffer, "\n\n")) !== false) {
                 $raw = substr($buffer, 0, $pos);
                 $buffer = substr($buffer, $pos + 2);
@@ -259,6 +318,7 @@ class ChatController extends Controller
         return $state['failed'] ? null : [
             'blocks' => array_values(array_filter($state['blocks'], fn ($b) => $b['type'] !== 'text' || $b['text'] !== '')),
             'stop' => $state['stop'],
+            'text' => implode('', $state['text']),
         ];
     }
 
@@ -287,7 +347,7 @@ class ChatController extends Controller
                 $d = $data['delta'] ?? [];
                 if (($d['type'] ?? '') === 'text_delta' && isset($state['blocks'][$i])) {
                     $state['blocks'][$i]['text'] .= $d['text'];
-                    $emit('text', ['t' => $d['text']]);
+                    $state['text'][] = $d['text']; // sent by relay() once the round is known to be the final one
                 } elseif (($d['type'] ?? '') === 'input_json_delta' && isset($state['blocks'][$i])) {
                     $state['blocks'][$i]['_json'] .= $d['partial_json'];
                 }
@@ -341,21 +401,27 @@ class ChatController extends Controller
             }
 
             if ($name === 'find_issues') {
-                $limit = max(1, min(50, (int) ($input['limit'] ?? 8)));
+                $limit = max(1, min(200, (int) ($input['limit'] ?? 50)));
                 $page = max(1, (int) ($input['page'] ?? 1));
-                $res = $yt->search($yt->buildQuery(['q' => (string) ($input['query'] ?? '')]), $page, $limit, true);
+                $res = $yt->search($yt->buildQuery(['q' => (string) ($input['query'] ?? '')]), $page, $limit, true, false);
+                $columns = ['id', 'summary', 'project', 'type', 'priority', 'assignee', 'reporter', 'state', 'created', 'resolved'];
 
                 return json_encode([
                     'total' => $res['total'], // all matching issues, not only this page (null if YouTrack could not count)
                     'page' => $page, 'shown' => count($res['issues']), 'has_more' => $res['has_more'],
-                    'issues' => array_map(fn ($i) => array_intersect_key($i, array_flip(['id', 'summary', 'project', 'type', 'priority', 'assignee', 'state'])), $res['issues']),
+                    'columns' => $columns, // each issue is a row in this order: shorter than repeating the names 200 times
+                    'issues' => array_map(fn ($i) => array_map(fn ($c) => match ($c) {
+                        'summary' => mb_substr((string) $i[$c], 0, 140),
+                        'created', 'resolved' => $i[$c] ? substr($i[$c], 0, 10) : null, // the day is enough
+                        default => $i[$c],
+                    }, $columns), $res['issues']),
                 ], JSON_UNESCAPED_UNICODE);
             }
 
             $issue = $yt->getIssue((string) ($input['issue_id'] ?? ''));
             $issue['description'] = mb_substr((string) $issue['description'], 0, 8000);
 
-            return json_encode(array_intersect_key($issue, array_flip(['id', 'summary', 'description', 'project', 'type', 'priority', 'assignee', 'state'])), JSON_UNESCAPED_UNICODE);
+            return json_encode(array_intersect_key($issue, array_flip(['id', 'summary', 'description', 'project', 'type', 'priority', 'assignee', 'reporter', 'state', 'created', 'resolved'])), JSON_UNESCAPED_UNICODE);
         } catch (TrackerException $e) {
             return 'Error: '.$e->getMessage();
         }

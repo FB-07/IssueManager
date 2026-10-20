@@ -287,18 +287,156 @@ it('clamps absurd page sizes and tells Claude how to count and list in the promp
 
     $this->post('/api/chat', chatPayload())->streamedContent();
 
-    Http::assertSent(fn ($r) => str_contains($r->url(), 'api/issues?') && str_contains(urldecode($r->url()), '$top=51'));
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'api/issues?') && str_contains(urldecode($r->url()), '$top=201')); // 5000 asked, 200 allowed (+1 to know if there is more)
     Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && str_contains($r['system'], 'call `count_issues`') && str_contains($r['system'], 'for: me') && str_contains($r['system'], 'has_more'));
 });
 
-it('tells Claude how to format lists, tables and issue keys in both modes', function () {
+it('lets Claude choose and build lists, tables and groupings by itself, in both modes', function () {
     config(['services.anthropic.key' => 'test-key']);
     foreach ([true, false] as $draftMode) {
         Http::fake(['api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200)]);
         $this->post('/api/chat', chatPayload(['draft_enabled' => $draftMode]))->streamedContent();
 
         Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic')
-            && str_contains($r['system'], 'Markdown lists') && str_contains($r['system'], 'ONE issue per line')
-            && str_contains($r['system'], '`- **KEY** — title · _state_ · project`') && str_contains($r['system'], 'Never put several issues in one paragraph'));
+            // it decides the form, and does what is named without asking
+            && str_contains($r['system'], 'YOU decide the best form') && str_contains($r['system'], '"tabela"/"em tabela" -> a Markdown table')
+            && str_contains($r['system'], 'means GROUP BY that field') && str_contains($r['system'], 'You compute groupings, counts and sorting yourself')
+            && str_contains($r['system'], 'no "here is the list/table"')
+            // lists of issues: one per line unless another form is asked; counts per group come from count_issues
+            && str_contains($r['system'], 'Unless the user asks for another form') && str_contains($r['system'], 'ONE issue per line') && str_contains($r['system'], 'Never put several issues in one paragraph')
+            && str_contains($r['system'], 'call `count_issues` once per group'));
     }
+});
+
+function textBlock(string $text, int $index = 0): array
+{
+    return [
+        ['type' => 'content_block_start', 'index' => $index, 'content_block' => ['type' => 'text', 'text' => '']],
+        ['type' => 'content_block_delta', 'index' => $index, 'delta' => ['type' => 'text_delta', 'text' => mb_substr($text, 0, 6)]],
+        ['type' => 'content_block_delta', 'index' => $index, 'delta' => ['type' => 'text_delta', 'text' => mb_substr($text, 6)]],
+        ['type' => 'content_block_stop', 'index' => $index],
+    ];
+}
+
+it('drops the narration before a lookup and sends the complete answer in one piece', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    $round1 = sse([
+        ...textBlock('Aqui está a lista:'),
+        ['type' => 'content_block_start', 'index' => 1, 'content_block' => ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'find_issues']],
+        ['type' => 'content_block_delta', 'index' => 1, 'delta' => ['type' => 'input_json_delta', 'partial_json' => '{"query":"for: me #Unresolved","limit":50}']],
+        ['type' => 'content_block_stop', 'index' => 1],
+        ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
+    ]);
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()->push($round1, 200)->push(sse([...textBlock("Tens 3 issues:\n- **DEV-1** — a\n- **DEV-2** — b\n- **DEV-3** — c"), ['type' => 'message_delta', 'delta' => ['stop_reason' => 'end_turn']]]), 200),
+        'yt.test/api/issuesGetter/count*' => Http::response(['count' => 3]),
+        'yt.test/api/issues?*' => Http::response([]),
+    ]);
+
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
+
+    // the intro never reaches the user; the answer arrives once, whole (not word by word after a pause)
+    expect($out)->not->toContain('Aqui está')->and($out)->toContain('Tens 3 issues:')->toContain('DEV-3')
+        ->and(substr_count($out, 'event: text'))->toBe(1)->and($out)->toContain('event: done');
+    // the model itself still remembers what it said before the lookup
+    $second = Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->values()[1][0]->data();
+    expect($second['messages'][1]['content'][0])->toMatchArray(['type' => 'text', 'text' => 'Aqui está a lista:']);
+});
+
+it('keeps the text written before a tool the app applies itself, and a plain answer still arrives', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response(sse([
+        ...textBlock('Vou alterar já.'),
+        ['type' => 'content_block_start', 'index' => 1, 'content_block' => ['type' => 'tool_use', 'id' => 'tu_1', 'name' => 'update_issue']],
+        ['type' => 'content_block_delta', 'index' => 1, 'delta' => ['type' => 'input_json_delta', 'partial_json' => '{"issue_id":"DEV-1","message":"ok","summary":"Novo"}']],
+        ['type' => 'content_block_stop', 'index' => 1],
+        ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
+    ]), 200)]);
+
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
+
+    expect($out)->toContain('Vou alterar já.')->toContain('event: update')->toContain('"issue_id":"DEV-1"');
+});
+
+it('tells Claude to call the lookup tools without writing anything first', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200)]);
+    $this->post('/api/chat', chatPayload())->streamedContent();
+
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && str_contains($r['system'], 'Do not write anything before calling these lookup tools'));
+});
+
+
+it('lists many issues cheaply: rows instead of objects, no descriptions fetched, up to 200 per page', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    $row = fn ($n) => ['id' => "2-$n", 'idReadable' => "DEV-$n", 'summary' => str_repeat('x', 300), 'project' => ['shortName' => 'DEV'],
+        'created' => 1760000000000, 'reporter' => ['login' => 'rui', 'fullName' => 'Rui Costa'],
+        // Assignee is a multi-value field: YouTrack sends a list of users
+        'customFields' => [['name' => 'State', 'value' => ['name' => 'Open']], ['name' => 'Assignee', 'value' => [['fullName' => 'Mariana Tavares', 'login' => 'mariana'], ['fullName' => 'Rui Costa', 'login' => 'rui']]]]];
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()->push(lookupRound('find_issues', ['query' => 'for: mariana.tavares #Unresolved', 'limit' => 200]), 200)->push(sse([]), 200),
+        'yt.test/api/issuesGetter/count*' => Http::response(['count' => 568]),
+        'yt.test/api/issues?*' => Http::response(array_map($row, range(1, 201))),
+    ]);
+
+    $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
+
+    $result = json_decode(Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->values()[1][0]->data()['messages'][2]['content'][0]['content'], true);
+    expect($result)->toMatchArray(['total' => 568, 'shown' => 200, 'has_more' => true])
+        ->and($result['columns'])->toBe(['id', 'summary', 'project', 'type', 'priority', 'assignee', 'reporter', 'state', 'created', 'resolved'])
+        // assigned to two people (a list), created by Rui on a given day, still open
+        ->and($result['issues'][0][0])->toBe('DEV-1')->and($result['issues'][0][5])->toBe('Mariana Tavares, Rui Costa')->and($result['issues'][0][6])->toBe('Rui Costa')
+        ->and($result['issues'][0][7])->toBe('Open')->and($result['issues'][0][8])->toBe('2025-10-09')->and($result['issues'][0][9])->toBeNull()
+        ->and(mb_strlen($result['issues'][0][1]))->toBe(140);
+    // the list search does not ask YouTrack for the (long) descriptions
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'api/issues?') && ! str_contains(urldecode($r->url()), 'description'));
+});
+
+it('accepts a very long earlier answer in the history and sends the model only a shortened copy', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200)]);
+    $list = "Tens 568 issues:\n".implode("\n", array_map(fn ($n) => "- **DEV-$n** — Issue número $n · _Open_", range(1, 3000))); // ~100k characters
+
+    $this->post('/api/chat', chatPayload(['messages' => [
+        ['role' => 'user', 'content' => 'lista os meus issues'],
+        ['role' => 'assistant', 'content' => $list],
+        ['role' => 'user', 'content' => 'e quais estão em Testing?'],
+    ]]))->assertOk()->streamedContent();
+
+    $sent = Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->first()[0]->data()['messages'];
+    expect(mb_strlen($list))->toBeGreaterThan(90000)
+        ->and($sent[1]['content'])->toStartWith('Tens 568 issues:')->toContain('characters of this earlier answer were left out')->toContain('DEV-3000')
+        ->and(mb_strlen($sent[1]['content']))->toBeLessThan(6500)
+        ->and($sent[0]['content'])->toBe('lista os meus issues')->and($sent[2]['content'][0]['text'])->toBe('e quais estão em Testing?'); // the new message goes as a content block
+});
+
+it('does not touch a normal earlier answer, and still limits what the user types', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200)]);
+    $answer = str_repeat('Resposta normal. ', 200); // ~3.4k characters
+
+    $this->post('/api/chat', chatPayload(['messages' => [['role' => 'user', 'content' => 'olá'], ['role' => 'assistant', 'content' => $answer], ['role' => 'user', 'content' => 'obrigado']]]))->assertOk()->streamedContent();
+    expect(Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->first()[0]->data()['messages'][1]['content'])->toBe($answer);
+
+    $this->post('/api/chat', chatPayload(['messages' => [['role' => 'user', 'content' => str_repeat('a', 30001)]]]))->assertStatus(422)->assertJsonPath('message', __('ui.errors.message_too_long', ['max' => 30000]));
+    $this->post('/api/chat', chatPayload(['messages' => [['role' => 'user', 'content' => 'x'], ['role' => 'assistant', 'content' => str_repeat('a', 400001)], ['role' => 'user', 'content' => 'y']]]))->assertStatus(422);
+});
+
+it('stores a long answer of the assistant (hundreds of issues) in the conversation', function () {
+    $id = $this->postJson('/api/conversations')->json('id');
+    $text = implode("\n", array_map(fn ($n) => "- **DEV-$n** — Issue número $n", range(1, 6000))); // ~190k characters
+
+    $this->post("/api/conversations/$id/turn", ['body' => 'lista tudo', 'assistant' => json_encode(['text' => $text])])->assertOk();
+
+    expect(mb_strlen($text))->toBeGreaterThan(150000)->and(\App\Models\Message::where('conversation_id', $id)->where('role', 'assistant')->first()->body)->toBe($text);
+});
+
+
+it('tells Claude how to tell "assigned to" from "created by" and not to call a field empty without looking', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response("event: message_stop\ndata: {}\n\n", 200)]);
+    $this->post('/api/chat', chatPayload())->streamedContent();
+
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && str_contains($r['system'], '`reporter: {login}` (CREATED by someone)') && str_contains($r['system'], '(ASSIGNED to someone)')
+        && str_contains($r['system'], 'never claim a field is empty unless the rows show it empty') && str_contains($r['system'], 'try the other syntax'));
 });

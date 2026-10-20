@@ -205,7 +205,8 @@ return [
     ],
 
     'errors' => [
-        'voice_unsupported' => 'This browser does not support voice dictation. Use Chrome, Edge or Safari.', 'voice_denied' => 'The browser is not allowed to use the microphone. Allow it in the site settings.', 'voice_no_mic' => 'No microphone was found.', 'voice_failed' => 'Voice dictation failed. Please try again.',
+        'message_too_long' => 'The message is too long (maximum :max characters).',
+        'voice_network' => 'Voice dictation needs an internet connection (the browser sends the audio to its recognition service). Check your connection and try again.', 'voice_unsupported' => 'This browser does not support voice dictation. Use Chrome, Edge or Safari.', 'voice_denied' => 'The browser is not allowed to use the microphone. Allow it in the site settings.', 'voice_no_mic' => 'No microphone was found.', 'voice_failed' => 'Voice dictation failed. Please try again.',
         'nothing_to_change' => 'I found nothing valid to change on the issue.',
         'unknown_project' => 'Unknown project: :project',
         'tracker_unreachable' => 'Could not reach YouTrack.',

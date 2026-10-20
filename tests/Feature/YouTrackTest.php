@@ -168,3 +168,28 @@ it('does not flag a short description as a duplicate by itself', function () {
     $this->getJson("/api/conversations/{$conv->id}/draft/similar?project=DEV&summary=Erro+no+pagamento&description=curto")->assertOk()
         ->assertJsonPath('issues.0.duplicate', false)->assertJsonPath('issues.0.description_match', null);
 });
+
+
+it('reads multi-value fields (a list of users) and the creator, instead of showing them empty', function () {
+    Http::fake(['yt.test/api/issues/DEV-5?*' => Http::response([
+        'id' => '2-5', 'idReadable' => 'DEV-5', 'summary' => 'x', 'project' => ['shortName' => 'DEV'],
+        'created' => 1760000000000, 'resolved' => 1760100000000, 'reporter' => ['login' => 'rui', 'fullName' => 'Rui Costa'],
+        'customFields' => [
+            ['name' => 'Assignee', 'value' => [['fullName' => 'Ana Silva', 'login' => 'ana'], ['login' => 'bruno']]], // a list: Assignee is often multi-value
+            ['name' => 'Priority', 'value' => ['name' => 'Major']],                                                    // a single value
+            ['name' => 'Type', 'value' => []],                                                                         // an empty list
+            ['name' => 'State', 'value' => null],
+        ],
+    ])]);
+
+    $res = $this->getJson('/api/youtrack/issues/DEV-5')->assertOk();
+
+    $res->assertJsonPath('assignee', 'Ana Silva, bruno')->assertJsonPath('priority', 'Major')->assertJsonPath('type', null)->assertJsonPath('state', null)
+        ->assertJsonPath('reporter', 'Rui Costa')->assertJsonPath('created', date('c', 1760000000))->assertJsonPath('resolved', date('c', 1760100000));
+});
+
+it('keeps working with issues that have no reporter or dates', function () {
+    Http::fake(['yt.test/api/issues/DEV-6?*' => Http::response(['id' => '2-6', 'idReadable' => 'DEV-6', 'summary' => 'x', 'project' => ['shortName' => 'DEV'], 'customFields' => []])]);
+
+    $this->getJson('/api/youtrack/issues/DEV-6')->assertOk()->assertJsonPath('reporter', null)->assertJsonPath('created', null)->assertJsonPath('assignee', null);
+});

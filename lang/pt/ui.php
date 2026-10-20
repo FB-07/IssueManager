@@ -205,7 +205,8 @@ return [
     ],
 
     'errors' => [
-        'voice_unsupported' => 'Este browser não suporta ditado por voz. Usa o Chrome, o Edge ou o Safari.', 'voice_denied' => 'O browser não tem permissão para usar o microfone. Autoriza-o nas definições do site.', 'voice_no_mic' => 'Não foi encontrado nenhum microfone.', 'voice_failed' => 'Não foi possível usar o ditado por voz. Tenta novamente.',
+        'message_too_long' => 'A mensagem é demasiado longa (máximo :max caracteres).',
+        'voice_network' => 'O ditado por voz precisa de ligação à internet (o browser envia o áudio ao serviço de reconhecimento). Verifica a ligação e tenta de novo.', 'voice_unsupported' => 'Este browser não suporta ditado por voz. Usa o Chrome, o Edge ou o Safari.', 'voice_denied' => 'O browser não tem permissão para usar o microfone. Autoriza-o nas definições do site.', 'voice_no_mic' => 'Não foi encontrado nenhum microfone.', 'voice_failed' => 'Não foi possível usar o ditado por voz. Tenta novamente.',
         'nothing_to_change' => 'Não encontrei nada válido para alterar no Issue.',
         'unknown_project' => 'Projeto desconhecido: :project',
         'tracker_unreachable' => 'Não foi possível contactar o YouTrack.',

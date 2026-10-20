@@ -21,7 +21,10 @@ use Illuminate\Support\Facades\Log;
  */
 class YouTrackClient
 {
-    private const ISSUE_FIELDS = 'id,idReadable,summary,description,updated,project(shortName,name),customFields(name,value(name,login,fullName))';
+    /** Without the (possibly long) description: for lists of many issues. */
+    private const LIST_FIELDS = 'id,idReadable,summary,updated,created,resolved,reporter(login,fullName),project(shortName,name),customFields(name,value(name,login,fullName))';
+
+    private const ISSUE_FIELDS = 'id,idReadable,summary,description,updated,created,resolved,reporter(login,fullName),project(shortName,name),customFields(name,value(name,login,fullName))';
 
     /** Fields handled explicitly; every other enum-like project field is exposed as a custom field. */
     private const KNOWN = ['Type', 'Priority', 'Subsystem', 'Assignee', 'State'];
@@ -146,11 +149,11 @@ class YouTrackClient
      *
      * @return array{issues:list<array<string,mixed>>,has_more:bool,total:?int,page:int,per_page:int}
      */
-    public function search(string $query, int $page = 1, int $perPage = 50, bool $withTotal = true): array
+    public function search(string $query, int $page = 1, int $perPage = 50, bool $withTotal = true, bool $withDescription = true): array
     {
         $skip = ($page - 1) * $perPage;
         // ask for one extra row to know whether another page exists
-        $rows = $this->get('/api/issues', ['query' => $query, 'fields' => self::ISSUE_FIELDS, '$top' => $perPage + 1, '$skip' => $skip]);
+        $rows = $this->get('/api/issues', ['query' => $query, 'fields' => $withDescription ? self::ISSUE_FIELDS : self::LIST_FIELDS, '$top' => $perPage + 1, '$skip' => $skip]);
 
         return [
             'issues' => array_map($this->normalize(...), array_slice($rows, 0, $perPage)),
@@ -479,12 +482,30 @@ class YouTrackClient
         }
     }
 
+    /**
+     * A custom field's value as text. YouTrack sends one value as an object and a multi-value field (Assignee is often one) as a
+     * list of objects: both are read, a list joined with ", ".
+     */
+    private function fieldValue(mixed $value): ?string
+    {
+        if (! is_array($value) || $value === []) {
+            return null;
+        }
+        $one = fn ($v) => is_array($v) ? ($v['fullName'] ?? $v['name'] ?? $v['login'] ?? null) : null;
+        if (array_is_list($value)) {
+            $names = array_values(array_filter(array_map($one, $value)));
+
+            return $names ? implode(', ', $names) : null;
+        }
+
+        return $one($value);
+    }
+
     private function normalize(array $i): array
     {
-        $cf = collect($i['customFields'] ?? [])->mapWithKeys(fn ($f) => [
-            $f['name'] => is_array($f['value'] ?? null) ? ($f['value']['fullName'] ?? $f['value']['name'] ?? null) : null,
-        ]);
+        $cf = collect($i['customFields'] ?? [])->mapWithKeys(fn ($f) => [$f['name'] => $this->fieldValue($f['value'] ?? null)]);
         $readable = $i['idReadable'] ?? $i['id'];
+        $date = fn ($ms) => isset($ms) ? date('c', intdiv((int) $ms, 1000)) : null;
 
         return [
             'id' => $readable,
@@ -494,9 +515,12 @@ class YouTrackClient
             'type' => $cf['Type'] ?? null,
             'priority' => $cf['Priority'] ?? null,
             'assignee' => $cf['Assignee'] ?? null,
+            'reporter' => isset($i['reporter']) ? ($i['reporter']['fullName'] ?? $i['reporter']['login'] ?? null) : null, // who created it
             'state' => $cf['State'] ?? null,
             'url' => config('services.youtrack.url').'/issue/'.$readable,
-            'updated' => isset($i['updated']) ? date('c', intdiv($i['updated'], 1000)) : null,
+            'created' => $date($i['created'] ?? null),
+            'resolved' => $date($i['resolved'] ?? null),
+            'updated' => $date($i['updated'] ?? null),
         ];
     }
 

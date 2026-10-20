@@ -1,6 +1,7 @@
 import { api } from './api';
 import { renderText, formatSize } from './render';
 import { streamChat } from './chat';
+import { polishDictation, endsSentence, vocabularyWords, pickAlternative } from './voice';
 
 const REQUIRED = ['summary', 'description', 'project', 'type', 'priority'];
 const ALLOWED_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'log', 'json', 'csv', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'php', 'js', 'ts', 'css', 'html', 'vue', 'sql', 'yml', 'yaml'];
@@ -10,6 +11,9 @@ const MAX_BYTES = 10 * 1024 * 1024;
 let similarTimer;
 let batchSimilarTimer;
 let stallTimer;
+// The dictation in progress. Kept out of the (reactive) store on purpose: the store hands out proxies, so `store.session !== session`
+// would always be true and every recognizer event would be taken for a stale one.
+let voiceSession = null;
 const batchSaveTimers = new Map();
 const batchScopes = new Map();
 const EMPTY_META = { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
@@ -217,7 +221,7 @@ export function createStore(boot) {
             this.contextIssue = null;
         },
         newChat() {
-            this.stopVoice();
+            this.stopVoice(true);
             this.resetChat();
             this.sidebarOpen = false;
             this.clearComposer();
@@ -439,6 +443,9 @@ export function createStore(boot) {
             const files = fromComposer ? [...this.composer.files] : [...(filesOverride ?? [])];
             if (!body && !files.length) return;
 
+            // sending ends the dictation for good: what it still had to say belongs to nothing now
+            this.stopVoice(true);
+
             // The previous answer is still being written: keep this message in line (shown above the box)
             // instead of silently leaving it in the text area.
             if (this.processing) {
@@ -448,7 +455,6 @@ export function createStore(boot) {
                 return;
             }
 
-            this.stopVoice();
             this.processing = true;
             this.streaming = false;
             let live = null;
@@ -915,6 +921,9 @@ export function createStore(boot) {
             if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 160) el.scrollTo({ top: el.scrollHeight });
         },
         // ---- voice dictation -----------------------------------------------
+        // The browser's recognizer (Web Speech API) ends a "continuous" session by itself after a pause or a minute, and delivers
+        // its results per session. A dictation is therefore a series of sessions that the app chains until the user stops, and the
+        // text shown is rebuilt from everything said so far, cleaned up by voice.js (spoken punctuation, capitals, issue ids).
         toggleVoice() {
             return this.voice.listening ? this.stopVoice() : this.startVoice();
         },
@@ -923,46 +932,118 @@ export function createStore(boot) {
             if (!SR) return this.notify(this.t('errors.voice_unsupported'), 'error');
             if (this.processing || this.voice.listening) return;
 
+            const session = { wanted: true, fatal: false, rec: null, base: this.composer.text.trim(), committed: '', final: '', interim: '', starts: [] };
+            voiceSession = session;
+            this.voice.listening = true;
+            this.focusComposer();
+            this.launchVoice(session);
+        },
+        launchVoice(session) {
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
             const rec = new SR();
             rec.lang = this.locale === 'pt' ? 'pt-PT' : 'en-US';
             rec.continuous = true;
             rec.interimResults = true;
-            rec.maxAlternatives = 1;
+            rec.maxAlternatives = 5; // several guesses per phrase: the one that knows the app's own words wins (see pickAlternative)
+            const vocabulary = vocabularyWords({ keys: this.voiceKeys(), names: this.voiceNames() });
 
-            const base = this.composer.text.trim();
-            let finals = '';
             rec.onresult = (e) => {
+                // late results of a dictation that was cancelled (the message was sent and the box emptied) are ignored
+                if (voiceSession !== session) return;
+                let final = '';
                 let interim = '';
-                for (let i = e.resultIndex; i < e.results.length; i++) {
+                for (let i = 0; i < e.results.length; i++) {
                     const r = e.results[i];
-                    if (r.isFinal) finals += r[0].transcript;
-                    else interim += r[0].transcript;
+                    const said = pickAlternative(r, vocabulary);
+                    if (r.isFinal) final += said;
+                    else interim += said;
                 }
-                this.composer.text = [base, `${finals}${interim}`.trim()].filter(Boolean).join(' ');
+                session.final = final;
+                session.interim = interim;
+                this.renderVoice(session);
             };
             rec.onerror = (e) => {
-                if (e.error === 'no-speech' || e.error === 'aborted') return;
-                const key = { 'not-allowed': 'voice_denied', 'service-not-allowed': 'voice_denied', 'audio-capture': 'voice_no_mic' }[e.error] ?? 'voice_failed';
+                if (e.error === 'no-speech' || e.error === 'aborted') return; // silence: the next session simply starts again
+                session.fatal = true;
+                const key = { 'not-allowed': 'voice_denied', 'service-not-allowed': 'voice_denied', 'audio-capture': 'voice_no_mic', network: 'voice_network' }[e.error] ?? 'voice_failed';
                 this.notify(this.t(`errors.${key}`), 'error');
             };
             rec.onend = () => {
+                if (voiceSession !== session) return;
+                // what this session heard (even a last provisional phrase) is kept for the text of the whole dictation
+                session.committed = [session.committed, `${session.final}${session.interim}`.trim()].filter(Boolean).join(' ');
+                session.final = session.interim = '';
+
+                if (session.wanted && !session.fatal) {
+                    const now = Date.now();
+                    session.starts = [...session.starts.filter((t) => now - t < 5000), now];
+                    if (session.starts.length > 6) {
+                        // restarting over and over without anything being heard: give up instead of looping
+                        this.notify(this.t('errors.voice_failed'), 'error');
+                    } else {
+                        setTimeout(() => voiceSession === session && session.wanted && this.launchVoice(session), 120);
+
+                        return;
+                    }
+                }
                 this.voice.listening = false;
-                this.voiceRecognition = null;
+                voiceSession = null;
+                this.renderVoice(session);
             };
 
             try {
                 rec.start();
-                this.voiceRecognition = rec;
-                this.voice.listening = true;
-                this.focusComposer();
+                session.rec = rec;
             } catch (e) {
+                session.fatal = true;
+                this.voice.listening = false;
+                voiceSession = null;
                 this.notify(this.t('errors.voice_failed'), 'error');
             }
         },
-        stopVoice() {
-            try {
-                this.voiceRecognition?.stop();
-            } catch (e) {}
+        /** Project keys and people of the user: what the dictation should recognise (issue ids, names with capitals). */
+        voiceKeys() {
+            return (this.projects ?? this.catalog?.projects ?? []).map((p) => p.key);
+        },
+        voiceNames() {
+            const metas = Object.values(this.catalog?.byProject ?? this.metaByProject ?? {});
+
+            return [...new Set(metas.flatMap((m) => (m.assignees ?? []).map((a) => a.label)).filter(Boolean))];
+        },
+        /** Box = what was typed before + everything dictated so far, cleaned up. */
+        renderVoice(session) {
+            const raw = [session.committed, session.final, session.interim].map((x) => x.trim()).filter(Boolean).join(' ');
+            const said = polishDictation(raw, { locale: this.locale, keys: this.voiceKeys(), names: this.voiceNames(), atStart: endsSentence(session.base) });
+            this.composer.text = said ? `${session.base}${session.base === '' || session.base.endsWith('\n') ? '' : ' '}${said}` : session.base;
+            this.followDictation();
+        },
+        /**
+         * The box grows with the text up to its maximum height and then scrolls. Typing keeps the caret in view, but text put
+         * there by the dictation does not, so the newest words would stay out of sight below the edge: show the end of the text.
+         */
+        followDictation() {
+            setTimeout(() => {
+                // after the text has been written into the box (x-model) and it has been resized
+                const el = document.getElementById('composer-input');
+                if (!el) return;
+                this.autosize(el);
+                el.scrollTop = el.scrollHeight;
+                el.setSelectionRange?.(el.value.length, el.value.length);
+            }, 0);
+        },
+        /**
+         * Stops dictating. Normally (the microphone button) the last words are still delivered; with `discard` (the message is
+         * being sent, or the box is being emptied) the recognition is cut off and nothing it says afterwards may come back.
+         */
+        stopVoice(discard = false) {
+            const session = voiceSession;
+            if (session) {
+                session.wanted = false;
+                if (discard) voiceSession = null; // from now on its late results are ignored (see onresult)
+                try {
+                    discard ? session.rec?.abort() : session.rec?.stop();
+                } catch (e) {}
+            }
             this.voice.listening = false;
         },
         onComposerKey(e) {
@@ -1016,6 +1097,7 @@ export function createStore(boot) {
             this.composer.files = this.composer.files.filter((x) => x.id !== id);
         },
         clearComposer(revoke = true) {
+            this.stopVoice(true); // an open microphone would write its transcript back into the emptied box
             if (revoke) this.composer.files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
             this.composer = { text: '', files: [] };
             const el = document.getElementById('composer-input');
