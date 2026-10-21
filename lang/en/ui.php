@@ -18,7 +18,20 @@ return [
         'dev' => 'Sign in as the development user',
     ],
 
+    'shortcuts' => [
+        'title' => 'Keyboard shortcuts',
+        'search_chats' => 'Search chats',
+        'new_chat' => 'New chat',
+        'issues' => 'Existing issues',
+        'draft' => 'Turn issue draft on/off',
+        'sidebar' => 'Collapse/expand sidebar',
+        'focus' => 'Write a message',
+        'help' => 'Show shortcuts',
+        'close' => 'Close',
+    ],
+
     'nav' => [
+        'options' => 'Options', 'search_chats' => 'Search chats', 'search_placeholder' => 'Search by title…', 'no_matches' => 'No chats found.',
         'select' => 'Select', 'select_all' => 'Select all', 'selected' => 'Selected: :n',
         'delete_selected' => 'Delete :n', 'delete_confirm' => 'Delete the selected conversations (:n)? This cannot be undone.', 'deleted' => 'Conversations deleted: :n.',
         'group_today' => 'Today', 'group_yesterday' => 'Yesterday', 'group_week' => 'Previous 7 days', 'group_older' => 'Older',
@@ -51,6 +64,7 @@ return [
     'dropdown' => ['search' => 'Search…', 'none' => 'No results'],
 
     'composer' => [
+        'stop' => 'Stop',
         'reply' => 'Reply',
         'queued' => 'Queued',
         'voice_start' => 'Dictate', 'voice_stop' => 'Stop listening', 'voice_listening' => 'Listening… say your request',
@@ -71,7 +85,7 @@ return [
         'duplicate_held' => 'Before creating it: an issue that looks like a duplicate already exists. Check the draft below; nothing was created.',
         'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
         'updating' => 'Updating the issue in YouTrack…', 'updating_issue' => 'Updating the issue in YouTrack.',
-        'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'preparing' => 'Preparing the answer… :time', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
+        'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'preparing' => 'Preparing the answer… :time', 'cancelled' => 'Message cancelled', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
 
     'fields' => [
         'state' => 'State',

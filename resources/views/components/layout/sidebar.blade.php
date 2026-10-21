@@ -15,13 +15,15 @@
 
     {{-- actions --}}
     <div class="space-y-1 px-3 pb-2">
-        <button type="button" class="btn w-full justify-start bg-surface-2" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.newChat()" x-bind:title="s.t('nav.new_chat')">
+        <button type="button" class="btn group w-full justify-start bg-surface-2" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.newChat()" x-bind:title="s.sidebarCollapsed ? s.t('nav.new_chat') : null">
             <x-ui.icon name="plus" class="shrink-0" />
             <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.new_chat')"></span>
+            <span class="ml-auto flex gap-1 text-xs text-faint opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" aria-hidden="true"><kbd class="font-sans" x-text="s.altLabel"></kbd><kbd class="font-sans">N</kbd></span>
         </button>
-        <button type="button" class="btn-ghost btn w-full justify-start" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.openIssues()" x-bind:title="s.t('nav.issues')">
+        <button type="button" class="btn-ghost btn group w-full justify-start" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.openIssues()" x-bind:title="s.sidebarCollapsed ? s.t('nav.issues') : null">
             <x-ui.icon name="check-circle" class="shrink-0" />
             <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.issues')"></span>
+            <span class="ml-auto flex gap-1 text-xs text-faint opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" aria-hidden="true"><kbd class="font-sans" x-text="s.altLabel"></kbd><kbd class="font-sans">I</kbd></span>
         </button>
     </div>
 
@@ -30,9 +32,24 @@
         <p x-show="s.conversations.length === 0" class="px-2 py-3 text-sm text-faint" x-text="s.t('nav.history_empty')"></p>
 
         <div class="sticky top-0 z-10 -mx-3 bg-surface px-5 pb-1 pt-2" x-show="s.conversations.length > 0">
-            <div class="flex items-center justify-between" x-show="!s.selectMode">
+            <div class="relative flex items-center justify-between" x-show="!s.selectMode">
                 <span class="text-[13px] font-semibold  uppercase tracking-wider text-muted" x-text="s.t('nav.history')"></span>
-                <button type="button" class="rounded-md px-1.5 py-0.5 text-[13px] font-medium text-muted transition hover:bg-surface-2 hover:text-fg" @click="s.startSelect()" x-text="s.t('nav.select')"></button>
+                <button type="button" class="btn-icon size-7" @click.stop="s.historyMenu = !s.historyMenu" aria-haspopup="menu" x-bind:aria-expanded="s.historyMenu" x-bind:aria-label="s.t('nav.options')" x-bind:title="s.t('nav.options')"><x-ui.icon name="more" class="size-4" /></button>
+                <div x-show="s.historyMenu" x-cloak @click.outside="s.historyMenu = false" @keydown.escape.window="s.historyMenu = false" role="menu"
+                     class="anim-rise absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border border-line bg-surface p-1 text-sm shadow-[var(--shadow)]">
+                    <button type="button" role="menuitem" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition hover:bg-surface-2" @click="s.startHistorySearch()">
+                        <x-ui.icon name="search" class="size-4 text-muted" /><span x-text="s.t('nav.search_chats')"></span>
+                    </button>
+                    <button type="button" role="menuitem" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition hover:bg-surface-2" @click="s.startSelect()">
+                        <x-ui.icon name="check" class="size-4 text-muted" /><span x-text="s.t('nav.select')"></span>
+                    </button>
+                </div>
+            </div>
+            <div class="mt-1.5 flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5" x-show="s.historySearching && !s.selectMode" x-cloak>
+                <x-ui.icon name="search" class="size-3.5 shrink-0 text-muted" />
+                <input id="history-search" type="text" autocomplete="off" maxlength="120" class="min-w-0 flex-1 bg-transparent py-1.5 text-sm placeholder:text-faint focus:outline-none"
+                       x-bind:placeholder="s.t('nav.search_placeholder')" x-model="s.historyQuery" @keydown.escape.stop="s.stopHistorySearch()">
+                <button type="button" class="btn-icon size-6" @click="s.stopHistorySearch()" x-bind:aria-label="s.t('common.close')"><x-ui.icon name="x" class="size-3" /></button>
             </div>
             <div class="flex items-center justify-between gap-2" x-show="s.selectMode" x-cloak>
                 <button type="button" class="flex items-center gap-2 rounded-md py-0.5 text-xs font-medium text-muted transition hover:text-fg" role="checkbox" x-bind:aria-checked="s.allSelected" @click="s.toggleSelectAll()">
@@ -45,6 +62,7 @@
                 <button type="button" class="rounded-md px-1.5 py-0.5 text-xs font-medium text-muted transition hover:bg-surface-2 hover:text-fg" @click="s.cancelSelect()" x-text="s.t('common.cancel')"></button>
             </div>
         </div>
+        <p x-show="s.conversations.length && s.historyQuery.trim() && !s.groupedConversations.length" class="px-2 py-3 text-sm text-faint" x-text="s.t('nav.no_matches')"></p>
         <template x-for="g in s.groupedConversations" x-bind:key="g.key">
         <div>
         <p class="px-2 pb-1.5 pt-3 text-[11px] font-medium uppercase tracking-wider text-muted" x-text="s.t('nav.group_' + g.key)"></p>

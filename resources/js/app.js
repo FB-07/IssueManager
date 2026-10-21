@@ -3,6 +3,7 @@ import Alpine from 'alpinejs';
 import collapse from '@alpinejs/collapse';
 import { createStore } from './store';
 import { combo } from './combo';
+import { initTooltips } from './tooltip';
 
 window.Alpine = Alpine;
 
@@ -22,4 +23,5 @@ document.addEventListener('alpine:init', () => {
     Alpine.store('app', createStore(boot));
 });
 
+initTooltips();
 Alpine.start();

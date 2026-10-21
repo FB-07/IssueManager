@@ -18,7 +18,20 @@ return [
         'dev' => 'Entrar como utilizador de desenvolvimento',
     ],
 
+    'shortcuts' => [
+        'title' => 'Atalhos de teclado',
+        'search_chats' => 'Pesquisar conversas',
+        'new_chat' => 'Nova conversa',
+        'issues' => 'Issues existentes',
+        'draft' => 'Ligar/desligar rascunho de Issue',
+        'sidebar' => 'Recolher/expandir barra lateral',
+        'focus' => 'Escrever mensagem',
+        'help' => 'Mostrar atalhos',
+        'close' => 'Fechar',
+    ],
+
     'nav' => [
+        'options' => 'Opções', 'search_chats' => 'Pesquisar conversas', 'search_placeholder' => 'Pesquisar por título…', 'no_matches' => 'Nenhuma conversa encontrada.',
         'select' => 'Selecionar', 'select_all' => 'Selecionar tudo', 'selected' => 'Selecionadas: :n',
         'delete_selected' => 'Apagar :n', 'delete_confirm' => 'Apagar as conversas selecionadas (:n)? Não é possível desfazer.', 'deleted' => 'Conversas apagadas: :n.',
         'group_today' => 'Hoje', 'group_yesterday' => 'Ontem', 'group_week' => 'Últimos 7 dias', 'group_older' => 'Mais antigas',
@@ -51,6 +64,7 @@ return [
     'dropdown' => ['search' => 'Pesquisar…', 'none' => 'Sem resultados'],
 
     'composer' => [
+        'stop' => 'Parar',
         'reply' => 'Responder',
         'queued' => 'Em fila',
         'voice_start' => 'Ditar por voz', 'voice_stop' => 'Parar de ouvir', 'voice_listening' => 'A ouvir… diz o teu pedido',
@@ -71,7 +85,7 @@ return [
         'duplicate_held' => 'Antes de criar: já existe um issue que parece duplicado. Revê o rascunho abaixo; nada foi criado.',
         'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
-        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
+        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
     'fields' => [
         'state' => 'Estado',

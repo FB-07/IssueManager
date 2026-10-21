@@ -1,5 +1,5 @@
 <header class="flex h-14 shrink-0 items-center gap-2 border-b border-line px-3 sm:px-4">
-    <button type="button" class="btn-icon" @click="s.toggleSidebar()" x-bind:aria-label="s.t('nav.toggle_sidebar')" x-bind:title="s.t('nav.toggle_sidebar')">
+    <button type="button" class="btn-icon" @click="s.toggleSidebar()" x-bind:aria-label="s.t('nav.toggle_sidebar')" x-bind:title="s.t('nav.toggle_sidebar')" data-shortcut="alt+B">
         <x-ui.icon name="panel-left" class="size-[18px]" />
     </button>
 
@@ -20,5 +20,10 @@
     {{-- theme --}}
     <button type="button" class="btn-icon" @click="s.toggleTheme()" x-bind:aria-label="s.theme === 'dark' ? s.t('settings.theme_light') : s.t('settings.theme_dark')" x-bind:title="s.theme === 'dark' ? s.t('settings.theme_light') : s.t('settings.theme_dark')">
         <span class="size-[18px]" x-html="s.icon(s.theme === 'dark' ? 'sun' : 'moon')"></span>
+    </button>
+
+    {{-- keyboard shortcuts --}}
+    <button type="button" class="btn-icon" @click="s.shortcutsOpen = true" x-bind:aria-label="s.t('shortcuts.title')" x-bind:title="s.t('shortcuts.title')" data-shortcut="?">
+        <x-ui.icon name="help" class="size-[18px]" />
     </button>
 </header>

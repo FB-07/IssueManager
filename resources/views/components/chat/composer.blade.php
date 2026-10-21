@@ -107,7 +107,7 @@
                 <button type="button" role="switch" x-bind:aria-checked="s.draftEnabled" @click="s.draftEnabled = !s.draftEnabled"
                         class="ml-1 inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition"
                         x-bind:class="s.draftEnabled ? 'border-accent/40 bg-accent-soft text-accent' : 'border-line text-muted hover:text-fg'"
-                        x-bind:title="s.draftEnabled ? s.t('composer.draft_toggle_on') : s.t('composer.draft_toggle_off')">
+                        x-bind:title="s.draftEnabled ? s.t('composer.draft_toggle_on') : s.t('composer.draft_toggle_off')" data-shortcut="alt+D">
                     <x-ui.icon name="file" class="size-3.5" />
                     <span x-text="s.t('composer.draft_toggle')"></span>
                     <span class="relative h-4 w-7 rounded-full transition" x-bind:class="s.draftEnabled ? 'bg-accent' : 'bg-surface-3'" aria-hidden="true">
@@ -124,9 +124,15 @@
                     <span class="absolute right-1.5 top-1.5 size-2 animate-ping rounded-full bg-danger" x-show="s.voice.listening" aria-hidden="true"></span>
                 </button>
 
-                <button type="submit" class="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+                {{-- while the answer is being written and nothing new is typed, the button stops it --}}
+                <button type="button" x-show="s.processing && !s.canSend" x-cloak @click="s.stopAnswer()"
+                        class="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-fg transition hover:bg-accent-hover"
+                        x-bind:aria-label="s.t('composer.stop')" x-bind:title="s.t('composer.stop')">
+                    <x-ui.icon name="stop" class="size-[18px]" />
+                </button>
+                <button type="submit" x-show="!(s.processing && !s.canSend)" class="flex size-9 items-center justify-center rounded-xl bg-accent text-accent-fg transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
                         x-bind:disabled="!s.canSend" x-bind:aria-label="s.t('composer.send')" x-bind:title="s.t('composer.send')">
-                    <span class="size-[18px]" x-html="s.icon(s.processing && !s.canSend ? 'loader' : 'send')" x-bind:class="s.processing && !s.canSend && 'anim-spin'"></span>
+                    <span class="size-[18px]" x-html="s.icon('send')"></span>
                 </button>
             </div>
         </div>

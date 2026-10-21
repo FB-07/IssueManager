@@ -14,6 +14,7 @@ let similarTimer;
 let batchSimilarTimer;
 let stallTimer;
 let elapsedTimer;
+let answerAbort = null; // aborts the answer being streamed (the stop button)
 let contextTimer;
 let contextSearchSeq = 0;
 let issueTimer;
@@ -50,6 +51,8 @@ export function createStore(boot) {
         sidebarCollapsed: false,
         sidebarOpen: false,
         settingsOpen: false,
+        shortcutsOpen: false,
+        altLabel: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌥' : 'Alt', // how the Alt key is written in shortcut hints
         profileMenu: false,
         confirmOpen: false,
         issuesOpen: false,
@@ -59,6 +62,9 @@ export function createStore(boot) {
         renameValue: '',
         deletingId: null,
         selectMode: false,
+        historyMenu: false, // the ⋯ menu above the conversations
+        historySearching: false, // the title search box is open
+        historyQuery: '',
         selectedIds: [],
         confirmBulk: false,
         bulkDeleting: false,
@@ -124,6 +130,7 @@ export function createStore(boot) {
             document.documentElement.lang = this.locale;
             this.loadRecents();
             window.addEventListener('keydown', (e) => e.key === 'Escape' && this.selectMode && !this.confirmBulk && this.cancelSelect());
+            window.addEventListener('keydown', (e) => this.onShortcut(e));
             window.addEventListener('popstate', () => this.routeFromLocation());
             document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && this.flushBatches());
             window.addEventListener('pagehide', () => this.flushBatches());
@@ -190,6 +197,38 @@ export function createStore(boot) {
         toggleTheme() {
             this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
         },
+        /** Keyboard shortcuts (listed in the "?" dialog). Alt combos use the physical key, so they work with the Mac's Option too. */
+        onShortcut(e) {
+            if (e.isComposing || e.defaultPrevented) return;
+            const el = e.target;
+            const typing = el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
+            const mod = e.metaKey || e.ctrlKey;
+            const run = (fn) => {
+                e.preventDefault();
+                fn();
+            };
+
+            if (mod && !e.altKey && !e.shiftKey && e.code === 'KeyK') {
+                return run(() => {
+                    if (window.matchMedia('(min-width: 1024px)').matches) this.sidebarCollapsed = false;
+                    else this.sidebarOpen = true;
+                    this.startHistorySearch();
+                });
+            }
+            if (e.altKey && !mod && !e.shiftKey) {
+                const actions = {
+                    KeyN: () => this.newChat(),
+                    KeyI: () => this.openIssues(),
+                    KeyD: () => (this.draftEnabled = !this.draftEnabled),
+                    KeyB: () => this.toggleSidebar(),
+                };
+                if (actions[e.code]) return run(actions[e.code]);
+            }
+            if (!typing && !mod && !e.altKey) {
+                if (e.key === '/') return run(() => this.focusComposer());
+                if (e.key === '?') return run(() => (this.shortcutsOpen = true));
+            }
+        },
         toggleSidebar() {
             if (window.matchMedia('(min-width: 1024px)').matches) {
                 this.sidebarCollapsed = !this.sidebarCollapsed;
@@ -220,7 +259,10 @@ export function createStore(boot) {
             const today = startOfDay(new Date());
             const day = 86400000;
             const groups = { today: [], yesterday: [], week: [], older: [] };
+            const norm = (x) => String(x ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+            const q = norm(this.historyQuery.trim());
             for (const c of this.conversations) {
+                if (q && !norm(c.title || this.t('nav.untitled')).includes(q)) continue;
                 const t = startOfDay(new Date(c.updated_at ?? Date.now()));
                 groups[t >= today ? 'today' : t >= today - day ? 'yesterday' : t >= today - 7 * day ? 'week' : 'older'].push(c);
             }
@@ -298,8 +340,19 @@ export function createStore(boot) {
                 this.notify(e.message, 'error');
             }
         },
+        // ---- search the conversations by title -------------------------------
+        startHistorySearch() {
+            this.historyMenu = false;
+            this.historySearching = true;
+            setTimeout(() => document.getElementById('history-search')?.focus(), 30);
+        },
+        stopHistorySearch() {
+            this.historySearching = false;
+            this.historyQuery = '';
+        },
         // ---- multi-select delete -------------------------------------------
         startSelect() {
+            this.historyMenu = false;
             this.selectMode = true;
             this.selectedIds = [];
             this.confirmBulk = false;
@@ -471,6 +524,10 @@ export function createStore(boot) {
         peopleFor(catalog, project) {
             return catalog?.byProject?.[project]?.assignees ?? [];
         },
+        /** The stop button: ends the answer being written; the message stays and the reply becomes "message cancelled". */
+        stopAnswer() {
+            answerAbort?.abort('stop');
+        },
         async send(textOverride = null, filesOverride = null, issuesOverride = null) {
             const fromComposer = textOverride === null;
             const typed = (fromComposer ? this.composer.text : textOverride).trim();
@@ -533,7 +590,9 @@ export function createStore(boot) {
 
                 live = { id: `tmp-${++uid}`, role: 'assistant', kind: 'text', body: '', meta: {}, attachments: [] };
                 let text = '';
-                const { patch: draftPatch, created, updated, replies: modelReplies, batch } = await streamChat(
+                const ctl = (answerAbort = new AbortController());
+                ctl.timer = setTimeout(() => ctl.abort(new DOMException('timeout', 'TimeoutError')), 330000); // a stalled connection must not leave the chat waiting forever
+                const { patch: draftPatch, created, updated, replies: modelReplies, batch, stopped } = await streamChat(
                     {
                         payload: {
                             messages: turns,
@@ -543,6 +602,7 @@ export function createStore(boot) {
                             catalog,
                         },
                         files: files.map((f) => f.file),
+                        signal: ctl.signal,
                     },
                     {
                         onText: (t) => {
@@ -559,6 +619,14 @@ export function createStore(boot) {
                         },
                     },
                 );
+
+                clearTimeout(ctl.timer);
+                answerAbort = null;
+                // stopped by the user: the message stays in the chat and what Claude had written is dropped; the reply just says so
+                if (stopped) {
+                    text = this.t('chat.cancelled');
+                    live.body = text;
+                }
 
                 // draft mode off: Claude may call create_issue when the user explicitly asks for an issue
                 // several issues proposed from a pasted text: reviewed one by one in a checklist, never created right away
@@ -628,6 +696,8 @@ export function createStore(boot) {
                 }
                 this.notify(e.name === 'TimeoutError' || e.name === 'AbortError' ? this.t('errors.chat_failed') : e.message || this.t('errors.generic'), 'error');
             } finally {
+                if (answerAbort) clearTimeout(answerAbort.timer);
+                answerAbort = null;
                 this.processing = false;
                 this.streaming = false;
                 this.stalled = false;

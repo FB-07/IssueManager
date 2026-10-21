@@ -31,3 +31,29 @@ test('a request that times out rejects instead of hanging', async () => {
   ctl.abort(new DOMException('timed out', 'TimeoutError'));
   await assert.rejects(pending, (e) => e.name === 'TimeoutError');
 });
+
+test('stopping keeps what has arrived and ends without an error; a timeout still rejects', async () => {
+  const enc = new TextEncoder();
+  const ctl = new AbortController();
+  let got = '';
+  globalThis.fetch = async (url, init) => {
+    let n = 0;
+
+    return { ok: true, status: 200, body: { getReader: () => ({ read: () => (n++ === 0
+      ? Promise.resolve({ done: false, value: enc.encode('event: text\ndata: {"t":"Olá"}\n\n') })
+      : new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)))) }) } };
+  };
+  const pending = streamChat({ payload: { messages: [] }, signal: ctl.signal }, { onText: (t) => { got += t; } });
+  await new Promise((r) => setTimeout(r, 20));
+  ctl.abort('stop');
+  const res = await pending;
+  assert.equal(got, 'Olá');
+  assert.equal(res.stopped, true);
+  assert.equal(res.patch, null);
+
+  globalThis.fetch = (url, init) => new Promise((resolve, reject) => init.signal.addEventListener('abort', () => reject(init.signal.reason)));
+  const late = new AbortController();
+  const p2 = streamChat({ payload: { messages: [] }, signal: late.signal }, { onText() {} });
+  late.abort(new DOMException('timed out', 'TimeoutError'));
+  await assert.rejects(p2, (e) => e.name === 'TimeoutError');
+});

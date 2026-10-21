@@ -1,3 +1,20 @@
+{{-- keyboard shortcuts --}}
+<x-ui.modal open="s.shortcutsOpen" title="shortcuts.title" width="max-w-md">
+    <dl class="space-y-2.5 text-sm">
+        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
+            <div class="flex items-center justify-between gap-4">
+                <dt class="text-muted" x-text="s.t('shortcuts.{{ $label }}')"></dt>
+                <dd class="flex shrink-0 gap-1">
+                    @foreach (explode('+', $keys) as $k)
+                        <kbd class="min-w-6 rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-center font-mono text-xs"
+                             x-text="{{ $k === 'mod' ? "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl')" : ($k === 'alt' ? "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⌥' : 'Alt')" : "'".$k."'") }}"></kbd>
+                    @endforeach
+                </dd>
+            </div>
+        @endforeach
+    </dl>
+</x-ui.modal>
+
 {{-- settings --}}
 <x-ui.modal open="s.settingsOpen" title="settings.title">
     <div class="space-y-5">

@@ -7,6 +7,17 @@ const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ??
  * Handlers: onText(delta). Resolves with { patch, created, updated, replies, batch }: the draft tool input, or the create_issue tool input when the draft mode is off.
  */
 export async function streamChat({ payload, files = [], signal }, { onText }) {
+    // Stopped by the user (the signal was aborted with the reason 'stop'): what has arrived so far is the result, nothing more
+    const stopped = () => ({ patch: null, created: null, updated: null, replies: null, batch: null, stopped: true });
+    try {
+        return await run({ payload, files, signal }, { onText });
+    } catch (e) {
+        if (signal?.aborted && signal.reason === 'stop') return stopped();
+        throw e;
+    }
+}
+
+async function run({ payload, files, signal }, { onText }) {
     const fd = new FormData();
     fd.append('payload', JSON.stringify(payload));
     files.forEach((f) => fd.append('files[]', f));
