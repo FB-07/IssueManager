@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
-use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -37,34 +35,6 @@ class ConversationController extends Controller
         $c->update($request->validate(['title' => ['required', 'string', 'max:120']]));
 
         return Presenter::conversation($c);
-    }
-
-    /**
-     * Links the chat to a YouTrack issue (or clears the link with `issue_key: null`). The issue must exist and be visible to the
-     * user; from then on "change it" or "close it" in this chat refers to it.
-     */
-    public function context(Request $request, int $conversation, YouTrackClient $yt)
-    {
-        $c = $this->conversation($request, $conversation);
-        $data = $request->validate(['issue_key' => ['present', 'nullable', 'string', 'max:60', 'regex:/^[A-Za-z0-9_.]+(-[A-Za-z0-9_.]+)*-\d+$/']]);
-
-        if ($data['issue_key'] === null) {
-            $c->update(['issue_key' => null, 'issue_summary' => null]);
-
-            return ['conversation' => Presenter::conversation($c), 'issue' => null];
-        }
-        if (! YouTrackClient::configured()) {
-            return response()->json(['message' => __('ui.errors.tracker_not_configured')], 503);
-        }
-
-        try {
-            $issue = $yt->getIssue($data['issue_key']);
-        } catch (TrackerException $e) {
-            return $e->response();
-        }
-        $c->update(['issue_key' => $issue['id'], 'issue_summary' => mb_substr($issue['summary'], 0, 255)]);
-
-        return ['conversation' => Presenter::conversation($c), 'issue' => $issue];
     }
 
     /** Deletes several of the user's conversations at once; ids that are not theirs are silently ignored. */

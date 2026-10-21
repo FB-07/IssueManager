@@ -4,13 +4,25 @@ import { streamChat } from './chat';
 import { polishDictation, endsSentence, vocabularyWords, pickAlternative } from './voice';
 
 const REQUIRED = ['summary', 'description', 'project', 'type', 'priority'];
-const ALLOWED_EXT = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'md', 'log', 'json', 'csv', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'php', 'js', 'ts', 'css', 'html', 'vue', 'sql', 'yml', 'yaml'];
+const BLOCKED_EXT = ['exe', 'msi', 'bat', 'cmd', 'com', 'scr', 'dll', 'jar', 'apk', 'dmg', 'app', 'pif', 'vbs'];
 const MAX_FILES = 10;
-const MAX_BYTES = 10 * 1024 * 1024;
+const QUOTE_MAX = 1500;
+const quoteBlock = (t) => t.split('\n').map((l) => `> ${l}`.trimEnd()).join('\n');
+const MAX_BYTES = 25 * 1024 * 1024;
 
 let similarTimer;
 let batchSimilarTimer;
 let stallTimer;
+let elapsedTimer;
+let contextTimer;
+let contextSearchSeq = 0;
+let issueTimer;
+let lastContextFire = 0;
+let issueSearchSeq = 0;
+// when each recent issue was last confirmed to still exist (so reopening the search does not ask YouTrack again right away)
+const recentChecks = new Map();
+const ISSUE_KEY = /^[A-Za-z0-9_.]+-\d+$/;
+const MAX_ISSUES = 5; // issues that can go with one message (as the server allows)
 // The dictation in progress. Kept out of the (reactive) store on purpose: the store hands out proxies, so `store.session !== session`
 // would always be true and every recognizer event would be taken for a stale one.
 let voiceSession = null;
@@ -56,12 +68,14 @@ export function createStore(boot) {
         messages: [],
         draft: null,
         similarIssues: [],
+        pendingRecents: [], // recent issues YouTrack is still being asked about: not offered until it answers
         similarKey: null,
         dupAck: false,
         loadingConversation: false,
         processing: false,
         queue: [],
         streaming: false,
+        elapsed: 0, // seconds since the message was sent, while the answer is being prepared
         stalled: false, // the answer has started but nothing new arrives (Claude is looking something up): dots show under the text
         draftEnabled: true,
         catalog: null,
@@ -77,7 +91,8 @@ export function createStore(boot) {
         metaByProject: {},
 
         // ---- composer ----------------------------------------------------
-        composer: { text: '', files: [] },
+        composer: { text: '', files: [], quote: '' }, // quote: a passage of an earlier answer this message replies to
+        selection: null, // the passage of an answer the user has selected: { text, x, y } (offers "reply")
         // dictation through the browser's speech recognition (Chrome/Edge/Safari); hidden where unsupported
         voice: { supported: !!(window.SpeechRecognition || window.webkitSpeechRecognition), listening: false },
 
@@ -90,8 +105,14 @@ export function createStore(boot) {
         issuesLoading: false,
         issueHasMore: false,
         issueEdit: null,
+        contextPicker: { open: false, q: '', results: [], loading: false, error: '', active: 0 }, // quick search for the context issue
+        attachedIssues: [], // issues attached to the message being written, like its files: [{ key, summary, state, url }]
+        attachMenu: false, // the paperclip menu (upload a file / attach an issue)
+        contextPicker: { open: false, q: '', results: [], loading: false, error: '', active: 0 }, // quick search for an issue to attach
+        dismissedKeys: [], // issue keys typed in the box that the user did not want to attach
+        goneIssues: [], // recent issues found to be deleted (or no longer visible): never offered again
+        recentList: [], // the issues attached lately in this browser ({ key, summary, url }); a copy of localStorage kept here so the screen follows it
         issuePickMode: false, // the issues modal is choosing the chat's context issue instead of editing
-        contextIssue: null, // current fields of the context issue (state, assignee…) for the bar above the composer
         issueMeta: null,
         issueSaving: false,
 
@@ -101,6 +122,7 @@ export function createStore(boot) {
                 this.sidebarCollapsed = localStorage.getItem('im.sidebar') === '1';
             } catch (e) {}
             document.documentElement.lang = this.locale;
+            this.loadRecents();
             window.addEventListener('keydown', (e) => e.key === 'Escape' && this.selectMode && !this.confirmBulk && this.cancelSelect());
             window.addEventListener('popstate', () => this.routeFromLocation());
             document.addEventListener('visibilitychange', () => document.visibilityState === 'hidden' && this.flushBatches());
@@ -119,6 +141,13 @@ export function createStore(boot) {
                 this.dragging = false;
                 if (e.dataTransfer?.files?.length) this.addFiles(e.dataTransfer.files);
             });
+            const watchSelection = () => setTimeout(() => this.readSelection(), 0);
+            document.addEventListener('mouseup', watchSelection);
+            document.addEventListener('keyup', watchSelection);
+            document.addEventListener('touchend', watchSelection);
+            document.addEventListener('scroll', () => (this.selection = null), true);
+            // the first page of issues is fetched in the background, so "Existing issues" opens with the list already there
+            if (boot.configured) setTimeout(() => !this.issuesOpen && !this.issueResults.length && this.searchIssues(1, true), 1500);
             if (boot.initialId) this.openConversation(boot.initialId, { push: false });
         },
 
@@ -218,7 +247,6 @@ export function createStore(boot) {
             this.pending.clear();
             this.flushBatches();
             this.batches = {};
-            this.contextIssue = null;
         },
         newChat() {
             this.stopVoice(true);
@@ -248,8 +276,6 @@ export function createStore(boot) {
                 if (this.draft?.project) this.loadMeta(this.draft.project);
                 this.loadProjects();
                 this.ensureCatalog();
-                this.contextIssue = null;
-                this.refreshContext();
                 setTimeout(() => this.scrollBottom(true), 30);
             } catch (e) {
                 this.notify(e.status === 403 || e.status === 404 ? this.t('errors.conversation_missing') : e.message, 'error');
@@ -353,19 +379,27 @@ export function createStore(boot) {
         },
         get canSend() {
             const c = this.composer;
-            return c.text.trim() !== '' || c.files.length > 0;
+            return c.text.trim() !== '' || c.files.length > 0 || this.attachedIssues.length > 0;
         },
         /** Conversation so far as plain text turns for the chat API (attachments of past turns are only named). */
         historyForApi() {
             return this.messages
-                .filter((m) => (m.role === 'user' || m.kind === 'text' || m.kind === 'question') && (m.body || m.attachments?.length))
+                .filter((m) => (m.role === 'user' || m.kind === 'text' || m.kind === 'question') && (m.body || m.attachments?.length || this.issuesOf(m).length))
                 .map((m) => {
                     const names = (m.attachments ?? []).map((a) => a.name);
                     const note = names.length ? `\n\n[${this.t('chat.previous_attachments')}: ${names.join(', ')}]` : '';
 
-                    return { role: m.role, content: `${m.body ?? ''}${note}`.trim() };
+                    return { role: m.role, content: `${m.role === 'user' ? this.issueTag(this.issuesOf(m)) : ''}${m.body ?? ''}${note}`.trim() };
                 })
                 .filter((m) => m.content !== '');
+        },
+        /** The issues that went with a message (attached like its files). */
+        issuesOf(m) {
+            return m.meta?.contexts ?? (m.meta?.context ? [m.meta.context] : []);
+        },
+        /** What tells Claude which issues a message carried: `[Contexto: DEV-1, DEV-2] `. */
+        issueTag(issues) {
+            return issues.length ? `[Contexto: ${issues.map((i) => i.key).join(', ')}] ` : '';
         },
         /** Projects + per-project metadata (types, priorities, people, custom fields) for Claude and the card. */
         async ensureCatalog() {
@@ -437,11 +471,13 @@ export function createStore(boot) {
         peopleFor(catalog, project) {
             return catalog?.byProject?.[project]?.assignees ?? [];
         },
-        async send(textOverride = null, filesOverride = null) {
+        async send(textOverride = null, filesOverride = null, issuesOverride = null) {
             const fromComposer = textOverride === null;
-            const body = (fromComposer ? this.composer.text : textOverride).trim();
+            const typed = (fromComposer ? this.composer.text : textOverride).trim();
+            const body = fromComposer && this.composer.quote && typed ? `${quoteBlock(this.composer.quote)}\n\n${typed}` : typed;
             const files = fromComposer ? [...this.composer.files] : [...(filesOverride ?? [])];
-            if (!body && !files.length) return;
+            const issues = fromComposer ? [...this.attachedIssues] : [...(issuesOverride ?? [])]; // attached to THIS message only, like the files
+            if (!body && !files.length && !issues.length) return;
 
             // sending ends the dictation for good: what it still had to say belongs to nothing now
             this.stopVoice(true);
@@ -449,7 +485,7 @@ export function createStore(boot) {
             // The previous answer is still being written: keep this message in line (shown above the box)
             // instead of silently leaving it in the text area.
             if (this.processing) {
-                this.queue.push({ body, files });
+                this.queue.push({ body, files, issues });
                 if (fromComposer) this.clearComposer(false);
 
                 return;
@@ -457,6 +493,10 @@ export function createStore(boot) {
 
             this.processing = true;
             this.streaming = false;
+            this.elapsed = 0;
+            const startedAt = Date.now();
+            clearInterval(elapsedTimer);
+            elapsedTimer = setInterval(() => (this.elapsed = Math.floor((Date.now() - startedAt) / 1000)), 1000);
             let live = null;
 
             // What Claude has seen so far (before this message), then show the message and empty the box right away:
@@ -467,7 +507,7 @@ export function createStore(boot) {
                 role: 'user',
                 kind: 'text',
                 body,
-                meta: {},
+                meta: issues.length ? { contexts: issues.map((i) => ({ key: i.key, summary: i.summary })) } : {},
                 attachments: files.map((f) => ({ id: f.id, kind: f.kind, name: f.name, size: f.size, url: f.preview })),
             };
             this.messages.push(temp);
@@ -486,8 +526,9 @@ export function createStore(boot) {
                 // "no / nobody" after the app asked about an assignee: stop asking in this conversation
                 const lastAssistant = [...this.messages].reverse().find((m) => m.role === 'assistant');
                 if (lastAssistant?.meta?.asked_assignee && /^\s*(n[ãa]o|ningu[ée]m|no|nobody|none|deixa|leave|sem )/i.test(body)) this.assigneeDeclined.add(this.activeId);
-                const sentBody = body || (files.length ? this.t('chat.attachments_only') : '');
-                turns.push({ role: 'user', content: sentBody });
+                const sentBody = body || (files.length || issues.length ? this.t('chat.attachments_only') : '');
+                // the new message is tagged like the earlier ones, so "this issue" in it cannot be taken for the one of an earlier message
+                turns.push({ role: 'user', content: `${this.issueTag(issues)}${sentBody}` });
                 const catalog = this.catalogForApi(await this.ensureCatalog());
 
                 live = { id: `tmp-${++uid}`, role: 'assistant', kind: 'text', body: '', meta: {}, attachments: [] };
@@ -498,7 +539,7 @@ export function createStore(boot) {
                             messages: turns,
                             draft_enabled: this.draftEnabled,
                             draft: this.draft ? this.draftForApi() : null,
-                            context: this.context ? { key: this.context.key } : null,
+                            contexts: issues.map((i) => ({ key: i.key })),
                             catalog,
                         },
                         files: files.map((f) => f.file),
@@ -559,6 +600,7 @@ export function createStore(boot) {
 
                 const fd = new FormData();
                 fd.append('body', body);
+                if (issues.length) fd.append('contexts', JSON.stringify(issues.map((i) => ({ key: i.key, summary: i.summary }))));
                 fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, batch: proposals, asked_assignee: askedAssignee, replies }));
                 files.forEach((f) => fd.append('files[]', f.file));
                 const res = await api('POST', `/api/conversations/${this.activeId}/turn`, fd);
@@ -582,15 +624,17 @@ export function createStore(boot) {
                     // give the message back without overwriting whatever was typed in the meantime
                     this.composer.text = [body, this.composer.text].filter(Boolean).join(this.composer.text ? '\n' : '');
                     this.composer.files = [...files, ...this.composer.files];
+                    this.attachedIssues = [...issues, ...this.attachedIssues.filter((a) => !issues.some((i) => i.key === a.key))];
                 }
-                this.notify(e.message || this.t('errors.generic'), 'error');
+                this.notify(e.name === 'TimeoutError' || e.name === 'AbortError' ? this.t('errors.chat_failed') : e.message || this.t('errors.generic'), 'error');
             } finally {
                 this.processing = false;
                 this.streaming = false;
                 this.stalled = false;
                 clearTimeout(stallTimer);
+                clearInterval(elapsedTimer);
                 const next = this.queue.shift();
-                if (next) setTimeout(() => this.send(next.body, next.files), 0);
+                if (next) setTimeout(() => this.send(next.body, next.files, next.issues), 0);
             }
         },
         // ---- batch of proposed issues (one pasted text -> N issues, swiped through like a deck) ----
@@ -869,6 +913,19 @@ export function createStore(boot) {
                 st.busy = false;
             }
         },
+        /** Throws the draft away (the card disappears; the next request starts a new one). */
+        async discardDraft() {
+            if (!this.draft || this.draft.status === 'created') return;
+            try {
+                await api('DELETE', `/api/conversations/${this.activeId}/draft`);
+                this.draft = null;
+                this.similarIssues = [];
+                this.advancedOpen = false;
+                this.cardTab = 'edit';
+            } catch (e) {
+                this.notify(e.message, 'error');
+            }
+        },
         /** Draft mode off + explicit request: the issue is created right away and shown as result + preview. */
         async createDirect() {
             this.creatingKind = 'create';
@@ -878,7 +935,6 @@ export function createStore(boot) {
                 this.draft = res.draft;
                 this.messages.push(res.message);
                 this.syncConversation(res.conversation);
-                this.refreshContext();
                 setTimeout(() => this.scrollBottom(), 40);
             } catch (e) {
                 if (e.data?.draft) this.draft = e.data.draft;
@@ -886,12 +942,6 @@ export function createStore(boot) {
             } finally {
                 this.creating = false;
             }
-        },
-        /** "Continue this conversation" after a creation: hide the choice, make that issue the chat's context (the user's explicit choice) and go back to the composer. */
-        continueConversation(message) {
-            message.meta = { ...message.meta, dismissed: true };
-            this.focusComposer();
-            if (message.meta?.key && this.context?.key !== message.meta.key) this.setContext(message.meta.key);
         },
         /** The user asked Claude to change an existing issue (by key, title or "the one I just created"). */
         async applyIssueEdit(edit) {
@@ -902,7 +952,6 @@ export function createStore(boot) {
                 const res = await api('POST', `/api/conversations/${this.activeId}/issues/update`, { issue_id: issueId, ...fields });
                 this.messages.push(res.message);
                 this.syncConversation(res.conversation);
-                this.refreshContext();
                 if (res.draft) this.draft = res.draft;
                 setTimeout(() => this.scrollBottom(), 40);
             } catch (e) {
@@ -1052,6 +1101,36 @@ export function createStore(boot) {
                 this.send();
             }
         },
+        // ---- replying to a passage of an answer ----------------------------
+        readSelection() {
+            const sel = window.getSelection();
+            const text = sel?.toString().trim() ?? '';
+            const node = sel?.anchorNode?.nodeType === 1 ? sel.anchorNode : sel?.anchorNode?.parentElement;
+            const inAnswer = node?.closest?.('.prose-msg') && sel.focusNode && node.closest('.prose-msg').contains(sel.focusNode);
+            if (!text || !inAnswer) {
+                this.selection = null;
+                return;
+            }
+            const r = sel.getRangeAt(0).getBoundingClientRect();
+            this.selection = { text, x: Math.min(Math.max(r.left + r.width / 2, 60), window.innerWidth - 60), y: Math.max(r.top - 8, 48) };
+        },
+        quoteSelection() {
+            if (!this.selection) return;
+            this.composer.quote = this.selection.text.slice(0, QUOTE_MAX);
+            this.selection = null;
+            window.getSelection()?.removeAllRanges();
+            document.getElementById('composer-input')?.focus();
+        },
+        // a user message body that starts with quoted lines ("> ...") shows them as a quote above the text
+        splitQuote(body) {
+            const m = /^((?:>[^\n]*\n)+)\n?([\s\S]*)$/.exec(body ?? '');
+            return m ? { quote: m[1].replace(/^> ?/gm, '').trim(), text: m[2] } : { quote: '', text: body ?? '' };
+        },
+        // 7 -> "7 s", 75 -> "1 min 15 s"
+        elapsedLabel() {
+            const m = Math.floor(this.elapsed / 60);
+            return m ? `${m} min ${this.elapsed % 60} s` : `${this.elapsed} s`;
+        },
         autosize(el) {
             el.style.height = 'auto';
             el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
@@ -1065,7 +1144,7 @@ export function createStore(boot) {
                     this.notify(this.t('errors.too_many_files', { max: MAX_FILES }), 'error');
                     break;
                 }
-                if (!ALLOWED_EXT.includes(ext)) {
+                if (BLOCKED_EXT.includes(ext)) {
                     this.notify(this.t('errors.file_type', { name: file.name }), 'error');
                     continue;
                 }
@@ -1099,7 +1178,8 @@ export function createStore(boot) {
         clearComposer(revoke = true) {
             this.stopVoice(true); // an open microphone would write its transcript back into the emptied box
             if (revoke) this.composer.files.forEach((f) => f.preview && URL.revokeObjectURL(f.preview));
-            this.composer = { text: '', files: [] };
+            this.composer = { text: '', files: [], quote: '' };
+            this.attachedIssues = [];
             const el = document.getElementById('composer-input');
             if (el) el.style.height = 'auto';
         },
@@ -1274,7 +1354,6 @@ export function createStore(boot) {
                 this.draft = res.draft;
                 this.messages.push(res.message);
                 this.syncConversation(res.conversation);
-                this.refreshContext();
                 setTimeout(() => this.scrollBottom(), 40);
             } catch (e) {
                 if (e.data?.draft) this.draft = e.data.draft;
@@ -1286,64 +1365,216 @@ export function createStore(boot) {
         },
 
         // ---- issues browser -----------------------------------------------
-        async openIssues(pick = false) {
+        async openIssues(pick = false, fresh = false) {
             this.issuePickMode = pick === true;
             this.issuesOpen = true;
             this.issueEdit = null;
             this.sidebarOpen = false;
-            await this.ensureCatalog();
-            await this.searchIssues(this.issueResults.length ? this.issuePage : 1);
+            this.issuesLoading = true; // while the catalog loads the list is not empty, it is not here yet
+            try {
+                await this.ensureCatalog();
+            } finally {
+                await this.searchIssues(!fresh && this.issueResults.length ? this.issuePage : 1);
+            }
         },
         // ---- chat context: the issue this conversation is about ----------------
-        get context() {
-            return this.activeConversation?.context ?? null;
+        /** Opens the quick search for the context issue (the full issue browser stays one click away). */
+        openContextPicker() {
+            this.attachMenu = false;
+            this.loadRecents();
+            Object.assign(this.contextPicker, { open: true, q: '', results: [], loading: false, error: '', active: 0 });
+            setTimeout(() => document.getElementById('context-search')?.focus(), 30);
+            this.verifyRecents(); // an issue is offered only once YouTrack has confirmed it still exists (no flash of a deleted one)
         },
+        closeContextPicker() {
+            this.contextPicker.open = false;
+            clearTimeout(contextTimer);
+            contextSearchSeq++;
+        },
+        /** The full list with filters (the old picker), for when a quick search is not enough. */
         openIssuePicker() {
-            return this.openIssues(true);
+            const q = this.contextPicker.q.trim(); // what was typed in the quick search carries over to the filters
+            this.closeContextPicker();
+            if (q) this.issueFilters.q = q;
+
+            return this.openIssues(true, q !== '');
         },
-        async pickIssue(issue) {
-            this.issuesOpen = false;
-            await this.setContext(issue.id);
-        },
-        /** Links the chat to an issue (or, with null, unlinks it). Without an open chat one is started. */
-        async setContext(key) {
-            try {
-                if (!this.activeId) {
-                    const c = await api('POST', '/api/conversations');
-                    this.conversations.unshift(c);
-                    this.activeId = c.id;
-                    history.pushState({}, '', `/c/${c.id}`);
-                    this.loadProjects();
+        /** Every recent issue we know of, newest first: what this chat carried, then the ones used lately in this browser. */
+        recentCandidates() {
+            const seen = new Set();
+            const out = [];
+            const add = (id, summary, url) => {
+                if (id && !seen.has(id) && out.length < 12) {
+                    seen.add(id);
+                    out.push({ id, summary: summary ?? '', url });
                 }
-                const res = await api('PUT', `/api/conversations/${this.activeId}/context`, { issue_key: key });
-                this.syncConversation(res.conversation);
-                this.contextIssue = res.issue;
-                if (key) this.notify(this.t('context.linked', { key }), 'success');
+            };
+            [...this.messages].reverse().forEach((m) => {
+                if (m.kind === 'creation-result' && m.meta?.key) add(m.meta.key, m.meta.summary, m.meta.url);
+                else if (m.role === 'user') this.issuesOf(m).forEach((i) => add(i.key, i.summary, this.issueUrl(i.key)));
+            });
+            this.recentContexts().forEach((c) => add(c.key, c.summary, c.url));
+
+            return out;
+        },
+        /** Issues to offer before typing anything: the recent ones, minus those attached already and those that no longer exist. */
+        get contextRecents() {
+            const attached = new Set(this.attachedIssues.map((i) => i.key));
+
+            return this.recentCandidates().filter((c) => !attached.has(c.id) && !this.goneIssues.includes(c.id) && !this.pendingRecents.includes(c.id)).slice(0, 6);
+        },
+        /**
+         * The recent issues come from what this chat carried and from this browser's memory, so some may have been deleted in
+         * YouTrack since (or the user may have lost access): ask which still exist, hide the others for good and refresh the titles.
+         */
+        async verifyRecents() {
+            const stale = this.recentCandidates().map((c) => c.id).filter((key) => !(recentChecks.get(key) > Date.now() - 60000));
+            this.pendingRecents = [...stale];
+            await Promise.all(stale.map(async (key) => {
+                try {
+                    const issue = await api('GET', `/api/youtrack/issues/${encodeURIComponent(key)}`);
+                    recentChecks.set(key, Date.now());
+                    // a renamed issue shows its new title (in place: confirming an issue must not move it in the list)
+                    if (this.recentList.some((c) => c.key === key && c.summary !== issue.summary)) this.saveRecents(this.recentList.map((c) => (c.key === key ? { ...c, summary: issue.summary, url: issue.url ?? c.url } : c)));
+                } catch (e) {
+                    if (e.status === 404) this.forgetRecent(key); // deleted, or not visible to this user any more
+                    // any other failure (YouTrack down, offline): keep it, it may well exist
+                } finally {
+                    this.pendingRecents = this.pendingRecents.filter((k) => k !== key);
+                }
+            }));
+        },
+        forgetRecent(key) {
+            if (!this.goneIssues.includes(key)) this.goneIssues.push(key);
+            this.saveRecents(this.recentList.filter((c) => c.key !== key));
+        },
+        issueUrl(key) {
+            return `${String(this.trackerUrl ?? '').replace(/\/$/, '')}/issue/${key}`;
+        },
+        get contextItems() {
+            return this.contextPicker.q.trim() ? this.contextPicker.results : this.contextRecents;
+        },
+        /** Search as you type (after a short pause). A whole key (DEV-12) is looked up directly; anything else is a text search. */
+        searchContext() {
+            const p = this.contextPicker;
+            const q = p.q.trim();
+            clearTimeout(contextTimer);
+            const seq = ++contextSearchSeq;
+            p.active = 0;
+            p.error = '';
+            if (!q) {
+                p.results = [];
+                p.loading = false;
+
+                return;
+            }
+            p.loading = true;
+            // the first letter searches at once; while typing fast the following ones are grouped a little (the last one always wins)
+            const wait = Date.now() - lastContextFire > 200 ? 0 : 120;
+            contextTimer = setTimeout(async () => {
+                lastContextFire = Date.now();
+                try {
+                    let results = [];
+                    if (ISSUE_KEY.test(q)) {
+                        try {
+                            results = [await api('GET', `/api/youtrack/issues/${encodeURIComponent(q.toUpperCase())}`)];
+                        } catch (_) {
+                            results = []; // not a key after all: search it as text
+                        }
+                    }
+                    if (!results.length) results = (await api('GET', '/api/youtrack/issues?' + new URLSearchParams({ q, per_page: 25 }))).issues ?? [];
+                    if (seq === contextSearchSeq) p.results = results;
+                } catch (e) {
+                    if (seq === contextSearchSeq) {
+                        p.results = [];
+                        p.error = e.message;
+                    }
+                } finally {
+                    if (seq === contextSearchSeq) p.loading = false;
+                }
+            }, wait);
+        },
+        moveContext(delta) {
+            const n = this.contextItems.length;
+            if (n) this.contextPicker.active = (this.contextPicker.active + delta + n) % n;
+        },
+        pickActiveContext() {
+            const issue = this.contextItems[this.contextPicker.active];
+            if (issue) return this.pickContextIssue(issue);
+        },
+        pickContextIssue(issue) {
+            this.closeContextPicker();
+            this.attachIssue(issue);
+        },
+        // ---- an issue key typed in the box: offer to attach it to the message -------
+        get mentionedKey() {
+            const keys = this.voiceKeys();
+            const text = this.composer.text;
+            if (!keys.length || !text) return null;
+            const re = new RegExp(`(^|[^\\w-])((?:${keys.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})-\\d+)(?![\\w-])`, 'gi');
+            const found = [...text.matchAll(re)].map((m) => m[2].toUpperCase());
+
+            return found.find((k) => !this.attachedIssues.some((i) => i.key === k) && !this.dismissedKeys.includes(k)) ?? null;
+        },
+        async attachMentioned() {
+            const key = this.mentionedKey;
+            if (key) await this.attachIssueByKey(key);
+        },
+        dismissMentioned() {
+            const key = this.mentionedKey;
+            if (key) this.dismissedKeys = [...this.dismissedKeys, key];
+        },
+        /** From the full issue browser (opened as a picker): the chosen issue is attached to the message. */
+        pickIssue(issue) {
+            this.issuesOpen = false;
+            this.attachIssue(issue);
+        },
+        /** Attaches an issue to the message being written, like a file (a search result, a recent one or one typed in the box). */
+        attachIssue(issue) {
+            const key = issue.id ?? issue.key;
+            if (!key || this.attachedIssues.some((i) => i.key === key)) return;
+            if (this.attachedIssues.length >= MAX_ISSUES) return this.notify(this.t('errors.too_many_issues', { max: MAX_ISSUES }), 'error');
+            this.attachedIssues.push({ key, summary: issue.summary ?? '', state: issue.state ?? null, url: issue.url ?? this.issueUrl(key) });
+            this.rememberContext({ key, summary: issue.summary ?? '', url: issue.url ?? this.issueUrl(key) });
+        },
+        removeIssue(key) {
+            this.attachedIssues = this.attachedIssues.filter((i) => i.key !== key);
+        },
+        /** Attaches an issue known only by its key (typed in the box, or the one just created). */
+        async attachIssueByKey(key) {
+            try {
+                this.attachIssue(await api('GET', `/api/youtrack/issues/${encodeURIComponent(key)}`));
             } catch (e) {
                 this.notify(e.message, 'error');
             }
         },
-        clearContext() {
-            return this.setContext(null);
+        /** The last issues attached, in this browser, for the quick search to offer before anything is typed. */
+        recentContexts() {
+            return this.recentList;
+        },
+        readRecents() {
+            try {
+                return JSON.parse(localStorage.getItem('im.contexts') || '[]').filter((c) => c && typeof c.key === 'string');
+            } catch (e) {
+                return [];
+            }
+        },
+        /** Reads the memory of the browser again (also what another tab remembered). Done at start and whenever the search opens. */
+        loadRecents() {
+            this.recentList = this.readRecents();
+        },
+        saveRecents(list) {
+            this.recentList = list;
+            try {
+                list.length ? localStorage.setItem('im.contexts', JSON.stringify(list)) : localStorage.removeItem('im.contexts');
+            } catch (e) {}
+        },
+        rememberContext(f) {
+            this.saveRecents([{ key: f.key, summary: f.summary, url: f.url }, ...this.recentList.filter((c) => c.key !== f.key)].slice(0, 8));
         },
         syncConversation(conv) {
             const c = this.conversations.find((x) => x.id === conv?.id);
             if (c) Object.assign(c, conv);
-        },
-        /** Fresh state of the context issue for the bar (it may have been changed in YouTrack or by this chat). */
-        async refreshContext() {
-            const key = this.context?.key;
-            if (!key) {
-                this.contextIssue = null;
-
-                return;
-            }
-            try {
-                const issue = await api('GET', `/api/youtrack/issues/${encodeURIComponent(key)}`);
-                if (this.context?.key === key) this.contextIssue = issue;
-            } catch (_) {
-                // only decoration: the key and title still show
-            }
         },
         /** Distinct filter choices; once a project is picked they come from that project only. */
         get issueFilterOptions() {
@@ -1382,21 +1613,30 @@ export function createStore(boot) {
 
             return { from, to: from + this.issueResults.length - 1 };
         },
-        async searchIssues(page = 1) {
-            this.issuesLoading = true;
+        async searchIssues(page = 1, quiet = false) {
+            clearTimeout(issueTimer);
+            const seq = ++issueSearchSeq; // only the latest search may fill the list (a slower, older one must not overwrite it)
+            if (!quiet) this.issuesLoading = true;
             const params = new URLSearchParams({ page, per_page: this.issuePerPage });
             Object.entries(this.issueFilters).forEach(([k, v]) => v !== '' && params.set(k, v));
             try {
                 const res = await api('GET', `/api/youtrack/issues?${params}`);
+                if (seq !== issueSearchSeq) return;
                 this.issueResults = res.issues;
                 this.issueHasMore = res.has_more;
                 this.issueTotal = res.total;
                 this.issuePage = res.page;
             } catch (e) {
-                this.notify(e.message, 'error');
+                if (!quiet) this.notify(e.message, 'error');
             } finally {
-                this.issuesLoading = false;
+                if (!quiet && seq === issueSearchSeq) this.issuesLoading = false;
             }
+        },
+        /** Search as the user types (after a short pause), without needing Enter. */
+        searchIssuesSoon() {
+            clearTimeout(issueTimer);
+            this.issuesLoading = true;
+            issueTimer = setTimeout(() => this.searchIssues(1), 350);
         },
         applyIssueFilters() {
             return this.searchIssues(1);

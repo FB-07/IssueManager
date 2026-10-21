@@ -97,11 +97,11 @@ class YouTrackClient
         return Cache::remember($this->cacheKey("meta.$projectKey"), 120, function () use ($projectKey) {
             $id = $this->projectId($projectKey);
             $fields = $this->get("/api/admin/projects/$id/customFields", [
-                'fields' => 'field(name),bundle(values(name)),$type',
+                'fields' => 'field(name),bundle(values(name,isResolved)),$type',
                 '$top' => 100,
             ]);
 
-            $meta = ['types' => [], 'priorities' => [], 'subsystems' => [], 'states' => [], 'sprints' => [], 'assignees' => [], 'custom' => []];
+            $meta = ['types' => [], 'priorities' => [], 'subsystems' => [], 'states' => [], 'resolved_states' => [], 'sprints' => [], 'assignees' => [], 'custom' => []];
             $map = ['Type' => 'types', 'Priority' => 'priorities', 'Subsystem' => 'subsystems'];
 
             foreach ($fields as $f) {
@@ -109,6 +109,8 @@ class YouTrackClient
                 $values = collect($f['bundle']['values'] ?? [])->pluck('name')->filter()->values()->all();
                 if ($name === 'State') {
                     $meta['states'] = $values;
+                    // the states that mean "done" (YouTrack flags them): what "close it" has to choose from
+                    $meta['resolved_states'] = collect($f['bundle']['values'] ?? [])->filter(fn ($v) => ($v['isResolved'] ?? false) === true)->pluck('name')->filter()->values()->all();
                 } elseif (isset($map[$name])) {
                     $meta[$map[$name]] = $values;
                 } elseif ($name && ! in_array($name, self::KNOWN, true) && $values && str_starts_with($f['$type'] ?? '', 'Enum')) {
@@ -270,7 +272,8 @@ class YouTrackClient
             'customFields' => $this->customFieldsPayload($draft['project'], $values),
         ]);
 
-        foreach ($draft['labels'] ?? [] as $label) {
+        $labels = $draft['labels'] ?? [];
+        foreach ($labels as $label) {
             $this->tryAddTag($created['id'], $label);
         }
         if (filled($draft['sprint'] ?? null)) {
@@ -477,7 +480,7 @@ class YouTrackClient
             $tag = collect($existing)->first(fn ($t) => strcasecmp($t['name'], $label) === 0)
                 ?? $this->send('post', '/api/tags', ['fields' => 'id,name'], ['name' => $label]);
             $this->send('post', "/api/issues/$issueId/tags", ['fields' => 'id'], ['id' => $tag['id']]);
-        } catch (TrackerException $e) {
+        } catch (\Throwable $e) {
             Log::warning('YouTrack: could not add tag', ['message' => $e->getMessage()]); // best effort
         }
     }

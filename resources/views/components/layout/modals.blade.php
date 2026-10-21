@@ -91,11 +91,8 @@
 {{-- existing issues: search + edit --}}
 <x-ui.modal open="s.issuesOpen" title="issues.title" width="max-w-3xl">
     <div x-show="!s.issueEdit" class="space-y-3">
-        <p class="flex items-start gap-2 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent" x-show="s.issuePickMode" x-cloak>
-            <x-ui.icon name="link" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('context.picker_hint')"></span>
-        </p>
         <form class="flex gap-2" @submit.prevent="s.applyIssueFilters()">
-            <input class="field" x-model="s.issueFilters.q" x-bind:placeholder="s.t('issues.search')" x-bind:aria-label="s.t('issues.search')" maxlength="200">
+            <input class="field" x-model="s.issueFilters.q" @input="s.searchIssuesSoon()" x-bind:placeholder="s.t('issues.search')" x-bind:aria-label="s.t('issues.search')" maxlength="200">
             <button class="btn" type="submit"><x-ui.icon name="search" /><span class="hidden sm:inline" x-text="s.t('issues.search_btn')"></span></button>
         </form>
 

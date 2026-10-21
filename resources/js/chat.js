@@ -16,7 +16,7 @@ export async function streamChat({ payload, files = [], signal }, { onText }) {
         headers: { Accept: 'text/event-stream', 'X-CSRF-TOKEN': csrf(), 'X-Requested-With': 'XMLHttpRequest' },
         body: fd,
         credentials: 'same-origin',
-        signal,
+        signal: signal ?? AbortSignal.timeout(330000), // a stalled connection must not leave the chat waiting forever
     });
 
     if (!res.ok) {

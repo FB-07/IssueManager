@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\AuthController;
+use App\Models\Message;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -205,7 +207,7 @@ it('still names the user when YouTrack cannot be asked, and says the login is un
 
 it('uses the YouTrack identity for the local dev user and never shows its fake email', function () {
     config(['services.anthropic.key' => 'test-key']);
-    test()->actingAs(yt_user('t', ['name' => 'Dev', 'email' => \App\Http\Controllers\AuthController::DEV_EMAIL]));
+    test()->actingAs(yt_user('t', ['name' => 'Dev', 'email' => AuthController::DEV_EMAIL]));
 
     $system = chatSystem();
 
@@ -227,7 +229,6 @@ it('asks YouTrack who the user is only once in a while', function () {
     expect(Http::recorded(fn ($r) => str_contains($r->url(), 'users/me'))->count())->toBe(1)
         ->and(Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->count())->toBe(2);
 });
-
 
 function lookupRound(string $tool, array $input): string
 {
@@ -353,7 +354,8 @@ it('keeps the text written before a tool the app applies itself, and a plain ans
         ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
     ]), 200)]);
 
-    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
+    // the user names the issue, so the change is allowed
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => 'altera o DEV-1']]]))->streamedContent();
 
     expect($out)->toContain('Vou alterar já.')->toContain('event: update')->toContain('"issue_id":"DEV-1"');
 });
@@ -365,7 +367,6 @@ it('tells Claude to call the lookup tools without writing anything first', funct
 
     Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && str_contains($r['system'], 'Do not write anything before calling these lookup tools'));
 });
-
 
 it('lists many issues cheaply: rows instead of objects, no descriptions fetched, up to 200 per page', function () {
     config(['services.anthropic.key' => 'test-key']);
@@ -428,9 +429,8 @@ it('stores a long answer of the assistant (hundreds of issues) in the conversati
 
     $this->post("/api/conversations/$id/turn", ['body' => 'lista tudo', 'assistant' => json_encode(['text' => $text])])->assertOk();
 
-    expect(mb_strlen($text))->toBeGreaterThan(150000)->and(\App\Models\Message::where('conversation_id', $id)->where('role', 'assistant')->first()->body)->toBe($text);
+    expect(mb_strlen($text))->toBeGreaterThan(150000)->and(Message::where('conversation_id', $id)->where('role', 'assistant')->first()->body)->toBe($text);
 });
-
 
 it('tells Claude how to tell "assigned to" from "created by" and not to call a field empty without looking', function () {
     config(['services.anthropic.key' => 'test-key']);
@@ -439,4 +439,89 @@ it('tells Claude how to tell "assigned to" from "created by" and not to call a f
 
     Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && str_contains($r['system'], '`reporter: {login}` (CREATED by someone)') && str_contains($r['system'], '(ASSIGNED to someone)')
         && str_contains($r['system'], 'never claim a field is empty unless the rows show it empty') && str_contains($r['system'], 'try the other syntax'));
+});
+
+function updateIssueRound(string $key, string $narration = ''): string
+{
+    return sse([
+        ...($narration !== '' ? textBlock($narration) : []),
+        ['type' => 'content_block_start', 'index' => 1, 'content_block' => ['type' => 'tool_use', 'id' => 'tu_u', 'name' => 'update_issue']],
+        ['type' => 'content_block_delta', 'index' => 1, 'delta' => ['type' => 'input_json_delta', 'partial_json' => json_encode(['issue_id' => $key, 'message' => 'ok', 'state' => 'Closed'])]],
+        ['type' => 'content_block_stop', 'index' => 1],
+        ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
+    ]);
+}
+
+it('refuses to change an issue the user did not point at, and makes the model ask instead', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::sequence()
+        ->push(updateIssueRound('DEV-7', 'A fechar o DEV-7.'), 200)
+        ->push(sse([...textBlock('Que issue queres fechar? Anexa-o com o clipe.'), ['type' => 'message_delta', 'delta' => ['stop_reason' => 'end_turn']]]), 200)]);
+
+    // no issue attached, none named: "Fecha o issue" after DEV-7 was talked about earlier
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [
+        ['role' => 'user', 'content' => '[Contexto: DEV-7] qual é o título?'], ['role' => 'assistant', 'content' => 'Botão de pagar.'], ['role' => 'user', 'content' => 'Fecha o issue.'],
+    ]]))->streamedContent();
+
+    expect($out)->not->toContain('event: update')->not->toContain('A fechar o DEV-7')->toContain('Que issue queres fechar?')->toContain('event: done');
+    $second = Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->values()[1][0]->data();
+    $result = $second['messages'][4]['content'][0]; // 3 messages of history, then the model's round, then the answer to its tool call
+    expect($result)->toMatchArray(['type' => 'tool_result', 'tool_use_id' => 'tu_u', 'is_error' => true])->and($result['content'])->toContain('REFUSED, nothing was changed')->toContain('DEV-7')->toContain('paperclip');
+});
+
+it('allows a change to an issue attached to the message, typed by the user (any case), or created from this conversation', function (array $over) {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response(updateIssueRound('DEV-7', 'Vou fechar.'), 200)]);
+
+    $out = $this->post('/api/chat', chatPayload($over + ['draft_enabled' => false]))->streamedContent();
+
+    expect($out)->toContain('event: update')->toContain('"issue_id":"DEV-7"')->toContain('Vou fechar.')->not->toContain('event: error');
+    expect(Http::recorded(fn ($r) => str_contains($r->url(), 'anthropic'))->count())->toBe(1); // nothing to refuse: no second round
+})->with([
+    'attached' => [['messages' => [['role' => 'user', 'content' => 'fecha este']], 'contexts' => [['key' => 'DEV-7']]]],
+    'attached, key in another case' => [['messages' => [['role' => 'user', 'content' => '[Contexto: dev-7] fecha este']]]],
+    'named by the user' => [['messages' => [['role' => 'user', 'content' => 'fecha o dev-7 por favor']]]],
+    'the issue created from this conversation' => [['messages' => [['role' => 'user', 'content' => 'fecha o issue que criaste']], 'draft' => ['issue_key' => 'DEV-7', 'summary' => 'x']]],
+]);
+
+it('allows a change to an issue found by a search for what the user described, not to one that only came up', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    $row = fn ($key, $title) => ['id' => "2-$key", 'idReadable' => "DEV-$key", 'summary' => $title, 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+    $run = function (string $userText, array $found, string $target) {
+        Http::fake([
+            'api.anthropic.com/*' => Http::sequence()->push(lookupRound('find_issues', ['query' => 'x']), 200)->push(updateIssueRound($target), 200)->push(sse([...textBlock('Qual?'), ['type' => 'message_delta', 'delta' => ['stop_reason' => 'end_turn']]]), 200),
+            'yt.test/api/issuesGetter/count*' => Http::response(['count' => count($found)]),
+            'yt.test/api/issues?*' => Http::response($found),
+        ]);
+
+        return $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => $userText]]]))->streamedContent();
+    };
+
+    // the user described "o issue do quiosque" and the search found it: allowed
+    expect($run('fecha o issue do quiosque', [$row(12, 'Quiosque: ecrã a piscar')], 'DEV-12'))->toContain('event: update')->toContain('"issue_id":"DEV-12"');
+    // the search found something unrelated to what the user wrote (the issue discussed earlier): refused
+    expect($run('fecha o issue do quiosque', [$row(7, 'Botão de pagar bloqueado')], 'DEV-7'))->not->toContain('event: update');
+    // the model closes an issue it merely read (not found by description) or an invented one: refused
+    expect($run('fecha o issue do quiosque', [$row(12, 'Quiosque: ecrã a piscar')], 'DEV-99'))->not->toContain('event: update');
+});
+
+it('reading an issue by its key does not make it changeable', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake([
+        'api.anthropic.com/*' => Http::sequence()->push(lookupRound('get_issue', ['issue_id' => 'DEV-7']), 200)->push(updateIssueRound('DEV-7'), 200)->push(sse([...textBlock('Qual issue?')]), 200),
+        'yt.test/api/issues/DEV-7?*' => Http::response(['id' => '2-7', 'idReadable' => 'DEV-7', 'summary' => 'Botão', 'project' => ['shortName' => 'DEV'], 'customFields' => []]),
+    ]);
+
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => 'Fecha o issue.']]]))->streamedContent();
+
+    expect($out)->not->toContain('event: update')->toContain('Qual issue?');
+});
+
+it('never applies an update for an issue it was not allowed, even if the model insists', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::sequence()->push(updateIssueRound('DEV-99'), 200)->push(updateIssueRound('DEV-99'), 200)->push(updateIssueRound('DEV-99'), 200)->push(sse([...textBlock('ok')]), 200)]);
+
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => 'fecha o issue']]]))->streamedContent();
+
+    expect($out)->not->toContain('event: update')->not->toContain('DEV-99');
 });

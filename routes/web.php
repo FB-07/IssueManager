@@ -33,12 +33,12 @@ Route::middleware('auth')->group(function () {
         Route::patch('/attachments/{attachment}', [AttachmentController::class, 'update'])->whereNumber('attachment');
         Route::post('/conversations', [ConversationController::class, 'store']);
         Route::delete('/conversations', [ConversationController::class, 'destroyMany']);
-        Route::put('/conversations/{conversation}/context', [ConversationController::class, 'context'])->whereNumber('conversation');
         Route::get('/conversations/{conversation}', [ConversationController::class, 'show'])->whereNumber('conversation');
         Route::patch('/conversations/{conversation}', [ConversationController::class, 'update'])->whereNumber('conversation');
         Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/turn', TurnController::class)->whereNumber('conversation');
         Route::patch('/conversations/{conversation}/draft', [DraftController::class, 'update'])->whereNumber('conversation');
+        Route::delete('/conversations/{conversation}/draft', [DraftController::class, 'destroy'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/messages/{message}/batch', BatchController::class)->whereNumber(['conversation', 'message'])->middleware('throttle:20,1');
         Route::patch('/conversations/{conversation}/messages/{message}/batch', [BatchController::class, 'save'])->whereNumber(['conversation', 'message'])->middleware('throttle:120,1');
         Route::get('/conversations/{conversation}/messages/{message}/batch/{index}/similar', [BatchController::class, 'similar'])->whereNumber(['conversation', 'message', 'index'])->middleware('throttle:60,1');
@@ -48,7 +48,7 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/youtrack/image', [YouTrackController::class, 'image'])->middleware('throttle:600,1');
 
-        Route::prefix('youtrack')->middleware('throttle:60,1')->group(function () {
+        Route::prefix('youtrack')->middleware('throttle:240,1')->group(function () {
             Route::get('/catalog', [YouTrackController::class, 'catalog']);
             Route::get('/projects', [YouTrackController::class, 'projects']);
             Route::get('/projects/{project}/meta', [YouTrackController::class, 'meta']);

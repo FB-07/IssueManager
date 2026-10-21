@@ -20,7 +20,7 @@
             <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.new_chat')"></span>
         </button>
         <button type="button" class="btn-ghost btn w-full justify-start" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.openIssues()" x-bind:title="s.t('nav.issues')">
-            <x-ui.icon name="search" class="shrink-0" />
+            <x-ui.icon name="check-circle" class="shrink-0" />
             <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.issues')"></span>
         </button>
     </div>

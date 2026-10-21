@@ -79,10 +79,6 @@ class IssueEditController extends Controller
                     'assignee' => $issue['assignee'], 'state' => $issue['state'], 'description' => $issue['description']],
             ],
         ]);
-        // the context is only ever chosen by the user; if this edit is of that very issue, keep its title current
-        if ($c->issue_key === $key) {
-            $c->update(['issue_summary' => mb_substr($issue['summary'], 0, 255)]);
-        }
         $c->touch();
 
         return ['message' => Presenter::message($message->load('attachments')), 'draft' => Presenter::draft($draft?->fresh()), 'conversation' => Presenter::conversation($c->fresh())];

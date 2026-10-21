@@ -148,6 +148,16 @@ class DraftController extends Controller
         return ['draft' => Presenter::draft($draft->fresh()), 'message' => Presenter::message($message->load('attachments')), 'conversation' => Presenter::conversation($conv->fresh())];
     }
 
+    /** Throws the draft away (nothing was created in the tracker); an issue that already exists is not undone from here. */
+    public function destroy(Request $request, int $conversation)
+    {
+        $draft = $this->draft($request, $conversation);
+        abort_if($draft->status === 'created', 409);
+        $draft->delete();
+
+        return response()->noContent();
+    }
+
     private function draft(Request $request, int $conversation): IssueDraft
     {
         return $this->conversation($request, $conversation)->draft ?? abort(404);

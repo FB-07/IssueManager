@@ -6,7 +6,6 @@ return [
     'login' => [
         'domain_only' => 'The account :email cannot sign in: only @:domain accounts are accepted.',
         'previous' => 'Last account used', 'continue_as' => 'Continue as :name', 'other_account' => 'Use another account', 'remove_account' => 'Remove :name from the list',
-        'forget_note' => 'Only the name and email are kept in this browser; never passwords or tokens.',
         'wrong_account' => 'You are signed in to YouTrack as :got, but you chose :expected. Pick "Use another account" to sign in with the right one.',
         'no_youtrack' => 'Your account signed in to the Hub but has no access to YouTrack. Ask the administrator to grant the IssueManager service the "YouTrack" scope.',
         'title' => 'Sign in',
@@ -52,6 +51,7 @@ return [
     'dropdown' => ['search' => 'Search…', 'none' => 'No results'],
 
     'composer' => [
+        'reply' => 'Reply',
         'queued' => 'Queued',
         'voice_start' => 'Dictate', 'voice_stop' => 'Stop listening', 'voice_listening' => 'Listening… say your request',
         'draft_toggle' => 'Issue draft',
@@ -71,7 +71,7 @@ return [
         'duplicate_held' => 'Before creating it: an issue that looks like a duplicate already exists. Check the draft below; nothing was created.',
         'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
         'updating' => 'Updating the issue in YouTrack…', 'updating_issue' => 'Updating the issue in YouTrack.',
-        'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
+        'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'preparing' => 'Preparing the answer… :time', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
 
     'fields' => [
         'state' => 'State',
@@ -96,6 +96,7 @@ return [
         'hint' => 'Check these before creating a duplicate.',
     ],
     'card' => [
+        'discard' => 'Cancel',
         'section_properties' => 'Properties', 'required_progress' => ':done of :total required',
         'attachments_title' => 'Attachments for the issue', 'attachments_count' => ':n to send', 'attachments_hint' => 'Checked attachments are added to the YouTrack issue when you create or save it.', 'attachment_sent' => 'Sent to :key',
         'title' => 'Issue draft',
@@ -138,12 +139,13 @@ return [
         'confirm' => 'Confirm',
     ],
 
+    'attach' => ['upload' => 'Upload from your computer', 'issue' => 'YouTrack issue'],
+
     'context' => [
-        'title' => 'Context', 'change' => 'Change', 'remove' => 'Remove context', 'use' => 'Use',
-        'placeholder' => 'Say what to change in :key, or describe another issue…',
-        'pick_hint' => 'Choose the issue this chat is about',
-        'picker_hint' => 'Choose this chat\'s issue. Then you can say "change…" or "close the issue" and Claude applies it to that one.',
-        'linked' => 'Chat linked to :key.',
+        'search_placeholder' => 'Key (DEV-12) or words of the title…', 'recent' => 'Recent', 'no_results' => 'No issue found.',
+        'advanced' => 'Advanced search with filters…', 'use' => 'Attach',
+        'mention' => 'You mention :key. Attach this issue to the message?', 'mention_link' => 'Attach',
+        'pick_hint' => 'Choose an issue to attach to the message',
     ],
 
     'batch' => [
@@ -161,7 +163,6 @@ return [
     ],
 
     'result' => [
-        'new_chat' => 'New chat', 'continue' => 'Continue this conversation',
         'attachments' => 'Attachments sent', 'attachments_failed' => 'Could not attach: :names',
         'changes' => 'Changed',
         'preview' => 'Preview',
@@ -191,9 +192,9 @@ return [
 
     'settings' => [
         'live_title' => 'Connected to YouTrack',
-        'live_text' => 'Projects, fields and issues come from YouTrack and creation is real once you confirm. Conversations from this session are not saved.',
+        'live_text' => 'Projects, fields and issues come from YouTrack and creation is real once you confirm.',
         'draft_title' => 'Issue draft',
-        'draft_text' => 'When on, Claude proposes an issue card during the conversation. When off, it is a normal chat.',
+        'draft_text' => 'When on, Claude proposes an issue card during the conversation. When off, it does not propose an issue card.',
         'title' => 'Settings',
         'theme' => 'Theme', 'theme_dark' => 'Dark', 'theme_light' => 'Light',
         'language' => 'Interface language',
@@ -205,6 +206,7 @@ return [
     ],
 
     'errors' => [
+        'too_many_issues' => 'You can attach at most :max issues to one message.',
         'message_too_long' => 'The message is too long (maximum :max characters).',
         'voice_network' => 'Voice dictation needs an internet connection (the browser sends the audio to its recognition service). Check your connection and try again.', 'voice_unsupported' => 'This browser does not support voice dictation. Use Chrome, Edge or Safari.', 'voice_denied' => 'The browser is not allowed to use the microphone. Allow it in the site settings.', 'voice_no_mic' => 'No microphone was found.', 'voice_failed' => 'Voice dictation failed. Please try again.',
         'nothing_to_change' => 'I found nothing valid to change on the issue.',
@@ -223,6 +225,6 @@ return [
         'conversation_missing' => 'Conversation not found.',
         'too_many_files' => 'Maximum of :max attachments per message.',
         'file_type' => 'Unsupported file type: :name',
-        'file_size' => 'File :name exceeds 10 MB.',
+        'file_size' => 'File :name exceeds 25 MB.',
     ],
 ];

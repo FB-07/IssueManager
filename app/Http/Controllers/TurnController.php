@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
+use App\Services\AttachmentReader;
 use App\Services\DraftPatch;
 use App\Services\QuickReplies;
 use App\Services\SimilarIssues;
@@ -18,8 +19,6 @@ class TurnController extends Controller
 {
     use ScopesToUser;
 
-    private const MIMES = 'png,jpg,jpeg,gif,webp,pdf,txt,md,log,json,csv,zip,doc,docx,xls,xlsx,php,js,ts,css,html,vue,sql,yml,yaml';
-
     public function __invoke(Request $request, int $conversation, YouTrackClient $yt, SimilarIssues $similar)
     {
         $c = $this->conversation($request, $conversation);
@@ -27,15 +26,17 @@ class TurnController extends Controller
         $data = $request->validate([
             'body' => ['nullable', 'string', 'max:20000'],
             'assistant' => ['required', 'string', 'max:600000'], // JSON with the (possibly very long) answer
-            'files' => ['array', 'max:10'],
-            'files.*' => ['file', 'max:10240', 'mimes:'.self::MIMES],
+            'contexts' => ['nullable', 'string', 'max:6000'], // JSON [{key, summary}]: the issues attached to this message
+            'files' => ['array', 'max:'.AttachmentReader::MAX_FILES],
+            'files.*' => ['file', 'max:'.AttachmentReader::MAX_KB, AttachmentReader::allowed(...)],
         ]);
         $reply = json_decode($data['assistant'], true);
         if (! is_array($reply) || blank($reply['text'] ?? null)) {
             return response()->json(['message' => __('ui.errors.chat_failed')], 422);
         }
         $text = trim($data['body'] ?? '');
-        if ($text === '' && ! $request->hasFile('files')) {
+        $issues = $this->attachedIssues($data['contexts'] ?? null);
+        if ($text === '' && ! $request->hasFile('files') && ! $issues) {
             return response()->json(['message' => __('ui.errors.empty_message')], 422);
         }
 
@@ -59,8 +60,9 @@ class TurnController extends Controller
             $patch = null; // a batch replaces the single draft for this turn
         }
 
-        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch, $similar) {
-            $user = $c->messages()->create(['role' => 'user', 'kind' => 'text', 'body' => $text]);
+        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch, $similar, $issues) {
+            // the issues attached to the message stay with it (like its images), so a chat about several issues shows which one each message was about
+            $user = $c->messages()->create(['role' => 'user', 'kind' => 'text', 'body' => $text, 'meta' => $issues ? ['contexts' => $issues] : null]);
 
             foreach ($request->file('files', []) as $file) {
                 $mime = (string) $file->getMimeType();
@@ -122,7 +124,7 @@ class TurnController extends Controller
             ]);
 
             if (blank($c->title)) {
-                $c->title = Str::limit($draft?->summary ?: ($batch[0]['summary'] ?? null) ?: ($text ?: ($user->attachments->first()?->name ?? 'Nova conversa')), 48, '…');
+                $c->title = Str::limit($draft?->summary ?: ($batch[0]['summary'] ?? null) ?: (trim(preg_replace('/\A(?:>[^\n]*\n)+\n?/', '', $text)) ?: ($user->attachments->first()?->name ?? 'Nova conversa')), 48, '…');
             }
             $c->touch();
             $c->save();
@@ -135,5 +137,19 @@ class TurnController extends Controller
                 'draft' => Presenter::draft($draft),
             ];
         });
+    }
+
+    /** @return list<array{key:string,summary:string}> the issues attached to the message (well formed ones only, at most a handful) */
+    private function attachedIssues(?string $json): array
+    {
+        $list = $json ? json_decode($json, true) : null;
+        $out = [];
+        foreach (is_array($list) ? $list : [] as $i) {
+            if (is_array($i) && is_string($i['key'] ?? null) && preg_match('/^[A-Za-z0-9_.]+(-[A-Za-z0-9_.]+)*-\d+$/', $i['key']) && ! in_array($i['key'], array_column($out, 'key'), true)) {
+                $out[] = ['key' => $i['key'], 'summary' => Str::limit((string) ($i['summary'] ?? ''), 200, '')];
+            }
+        }
+
+        return array_slice($out, 0, ChatController::MAX_ISSUES);
     }
 }

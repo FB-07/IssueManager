@@ -6,7 +6,6 @@ return [
     'login' => [
         'domain_only' => 'A conta :email não pode entrar: só são aceites contas @:domain.',
         'previous' => 'Última conta usada', 'continue_as' => 'Continuar como :name', 'other_account' => 'Usar outra conta', 'remove_account' => 'Remover :name da lista',
-        'forget_note' => 'Só guarda o nome e o email neste browser; nunca palavras-passe nem tokens.',
         'wrong_account' => 'Entraste no YouTrack com :got, mas escolheste :expected. Escolhe "Usar outra conta" para entrar com a conta certa.',
         'no_youtrack' => 'A tua conta entrou no Hub mas não tem acesso ao YouTrack. Pede ao administrador para dar à Service IssueManager o scope "YouTrack".',
         'title' => 'Entrar',
@@ -52,6 +51,7 @@ return [
     'dropdown' => ['search' => 'Pesquisar…', 'none' => 'Sem resultados'],
 
     'composer' => [
+        'reply' => 'Responder',
         'queued' => 'Em fila',
         'voice_start' => 'Ditar por voz', 'voice_stop' => 'Parar de ouvir', 'voice_listening' => 'A ouvir… diz o teu pedido',
         'draft_toggle' => 'Rascunho de Issue',
@@ -71,7 +71,7 @@ return [
         'duplicate_held' => 'Antes de criar: já existe um issue que parece duplicado. Revê o rascunho abaixo; nada foi criado.',
         'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
-        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
+        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
     'fields' => [
         'state' => 'Estado',
@@ -96,6 +96,7 @@ return [
         'hint' => 'Confirma estas antes de criar uma duplicada.',
     ],
     'card' => [
+        'discard' => 'Cancelar',
         'section_properties' => 'Propriedades', 'required_progress' => ':done de :total obrigatórios',
         'attachments_title' => 'Anexos para o Issue', 'attachments_count' => ':n por enviar', 'attachments_hint' => 'Os anexos marcados ficam no Issue do YouTrack quando o criares ou guardares.', 'attachment_sent' => 'Enviado para :key',
         'title' => 'Rascunho de Issue',
@@ -138,12 +139,13 @@ return [
         'confirm' => 'Confirmar',
     ],
 
+    'attach' => ['upload' => 'Carregar do computador', 'issue' => 'Issue do YouTrack'],
+
     'context' => [
-        'title' => 'Contexto', 'change' => 'Trocar', 'remove' => 'Remover contexto', 'use' => 'Usar',
-        'placeholder' => 'Diz o que alterar em :key, ou descreve outro issue…',
-        'pick_hint' => 'Escolher o issue a que este chat se refere',
-        'picker_hint' => 'Escolhe o issue deste chat. Depois podes dizer "altera…" ou "fecha o issue" e o Claude aplica-o a ele.',
-        'linked' => 'Chat associado a :key.',
+        'search_placeholder' => 'Chave (DEV-12) ou palavras do título…', 'recent' => 'Recentes', 'no_results' => 'Nenhum issue encontrado.',
+        'advanced' => 'Pesquisa avançada com filtros…', 'use' => 'Anexar',
+        'mention' => 'Falas de :key. Anexar este issue à mensagem?', 'mention_link' => 'Anexar',
+        'pick_hint' => 'Escolher um issue para anexar à mensagem',
     ],
 
     'batch' => [
@@ -161,7 +163,6 @@ return [
     ],
 
     'result' => [
-        'new_chat' => 'Nova conversa', 'continue' => 'Continuar esta conversa',
         'attachments' => 'Anexos enviados', 'attachments_failed' => 'Não foi possível anexar: :names',
         'changes' => 'Alterado',
         'preview' => 'Pré-visualização',
@@ -191,9 +192,9 @@ return [
 
     'settings' => [
         'live_title' => 'Ligado ao YouTrack',
-        'live_text' => 'Os projetos, campos e Issues vêm do YouTrack e a criação é real depois de confirmares. As conversas desta sessão não são guardadas.',
+        'live_text' => 'Os projetos, campos e Issues vêm do YouTrack e a criação é real depois de confirmares.',
         'draft_title' => 'Rascunho de Issue',
-        'draft_text' => 'Quando ligado, o Claude propõe um cartão de Issue durante a conversa. Desligado, é um chat normal.',
+        'draft_text' => 'Quando ligado, o Claude propõe um cartão de Issue durante a conversa. Desligado não propõe um cartão de issue.',
         'title' => 'Definições',
         'theme' => 'Tema', 'theme_dark' => 'Escuro', 'theme_light' => 'Claro',
         'language' => 'Idioma da interface',
@@ -205,6 +206,7 @@ return [
     ],
 
     'errors' => [
+        'too_many_issues' => 'Podes anexar no máximo :max issues a uma mensagem.',
         'message_too_long' => 'A mensagem é demasiado longa (máximo :max caracteres).',
         'voice_network' => 'O ditado por voz precisa de ligação à internet (o browser envia o áudio ao serviço de reconhecimento). Verifica a ligação e tenta de novo.', 'voice_unsupported' => 'Este browser não suporta ditado por voz. Usa o Chrome, o Edge ou o Safari.', 'voice_denied' => 'O browser não tem permissão para usar o microfone. Autoriza-o nas definições do site.', 'voice_no_mic' => 'Não foi encontrado nenhum microfone.', 'voice_failed' => 'Não foi possível usar o ditado por voz. Tenta novamente.',
         'nothing_to_change' => 'Não encontrei nada válido para alterar no Issue.',
@@ -223,6 +225,6 @@ return [
         'conversation_missing' => 'Conversa não encontrada.',
         'too_many_files' => 'Máximo de :max anexos por mensagem.',
         'file_type' => 'Tipo de ficheiro não suportado: :name',
-        'file_size' => 'O ficheiro :name excede 10 MB.',
+        'file_size' => 'O ficheiro :name excede 25 MB.',
     ],
 ];

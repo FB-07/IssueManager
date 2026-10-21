@@ -27,7 +27,6 @@
         <section id="previous" hidden class="mb-5" aria-labelledby="previous-title">
             <h2 id="previous-title" class="mb-2 text-[11px] font-semibold uppercase tracking-wider text-faint">{{ __('ui.login.previous') }}</h2>
             <ul id="previous-list" class="space-y-2"></ul>
-            <p class="mt-2 text-[11px] leading-snug text-faint">{{ __('ui.login.forget_note') }}</p>
         </section>
 
         <a id="main-login" href="{{ route('auth.youtrack') }}" class="btn btn-primary w-full py-2.5">{{ __('ui.login.button') }}</a>
@@ -70,16 +69,16 @@
         document.getElementById('main-login').hidden = list.length > 0;
 
         list.forEach((a) => {
-            const li = el('li', 'flex items-center gap-1');
+            const li = el('li', 'relative');
             // choosing a remembered account goes through the Hub; the app then checks it really is that account
-            const go = el('a', 'group flex min-w-0 flex-1 items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5 transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent');
+            const go = el('a', 'group flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface py-2.5 pl-3 pr-12 transition hover:border-line-strong hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent');
             go.href = base + '?account=' + encodeURIComponent(a.email);
             go.title = T.continueAs.replace(':name', a.name || a.email);
             go.append(el('span', 'flex size-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent', initials(a.name || a.email)));
             const txt = el('span', 'min-w-0 flex-1');
             txt.append(el('span', 'block truncate text-sm font-medium', a.name || a.email), el('span', 'block truncate text-xs text-muted', a.email));
             go.append(txt);
-            const rm = el('button', 'btn-icon size-9 shrink-0 hover:text-danger');
+            const rm = el('button', 'btn-icon absolute right-2 top-1/2 size-8 -translate-y-1/2 hover:text-danger');
             rm.type = 'button';
             rm.title = rm.ariaLabel = T.remove.replace(':name', a.name || a.email);
             rm.innerHTML = '<svg class="size-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';

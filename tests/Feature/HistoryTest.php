@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Conversation;
+use App\Models\IssueDraft;
 use App\Models\User;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
@@ -302,4 +303,20 @@ it('stores sanitized quick replies in the assistant message and returns them whe
     // a normal answer carries no replies at all
     $id2 = call_as($this->a, 'POST', '/api/conversations')->json('id');
     turn($this->a, $id2, ['text' => 'ok'])->assertOk()->assertJsonMissingPath('messages.1.meta.replies');
+});
+
+it('discards the draft of a conversation, only for its owner and never one already created', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Botão falha']]);
+
+    call_as($this->b, 'DELETE', "/api/conversations/$id/draft")->assertNotFound();
+    expect(call_as($this->a, 'GET', "/api/conversations/$id")->json('draft.summary'))->toBe('Botão falha');
+
+    call_as($this->a, 'DELETE', "/api/conversations/$id/draft")->assertNoContent();
+    expect(call_as($this->a, 'GET', "/api/conversations/$id")->json('draft'))->toBeNull();
+    call_as($this->a, 'DELETE', "/api/conversations/$id/draft")->assertNotFound();
+
+    turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Outro']]);
+    IssueDraft::where('conversation_id', $id)->update(['status' => 'created']);
+    call_as($this->a, 'DELETE', "/api/conversations/$id/draft")->assertStatus(409);
 });

@@ -1,6 +1,6 @@
 @props(['c' => 's', 'batch' => false])
 {{-- $c: JS expression of the object holding the draft (the store, or one proposal of a batch carousel) --}}
-<div class="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm" x-data="{ labelInput: '' }" @unless($batch) x-effect="s.watchSimilar(s.draft.summary, s.draft.project, s.draft.description)" @endunless aria-label="Issue">
+<div class="anim-rise mt-4 overflow-hidden rounded-2xl border border-line bg-surface shadow-sm" x-data="{ labelInput: '', armed: false, armTimer: null }" @unless($batch) x-effect="s.watchSimilar(s.draft.summary, s.draft.project, s.draft.description)" @endunless aria-label="Issue">
 
     {{-- header --}}
     <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:px-5">
@@ -262,10 +262,18 @@
                 <span x-show="!{{ $c }}.valid" x-text="s.t('card.complete_to_create')"></span>
                 <span x-show="{{ $c }}.valid" x-text="s.t('card.confirm_needed')"></span>
             </p>
-            <button type="button" class="btn btn-primary ml-auto px-4" @click="{{ $c }}.openConfirm()" x-bind:disabled="!{{ $c }}.valid || {{ $c }}.creating || s.processing">
-                <span class="size-4" x-bind:class="{{ $c }}.creating && 'anim-spin'" x-html="s.icon({{ $c }}.creating ? 'loader' : 'check')"></span>
-                <span x-text="{{ $c }}.creating ? s.t('card.creating') : ({{ $c }}.draft.status === 'created' ? s.t('card.save_changes', { key: {{ $c }}.draft.issue_key }) : s.t('card.create'))"></span>
-            </button>
+            <div class="ml-auto flex items-center gap-2">
+                <button type="button" class="btn" x-show="{{ $c }}.draft.status !== 'created'"
+                        x-bind:class="armed && 'border-danger bg-danger text-white hover:bg-danger'"
+                        @click="if (armed) { clearTimeout(armTimer); armed = false; s.discardDraft() } else { armed = true; armTimer = setTimeout(() => armed = false, 4000) }"
+                        @blur="armed = false" x-bind:disabled="{{ $c }}.creating">
+                    <x-ui.icon name="x" /><span x-text="s.t('card.discard')"></span>
+                </button>
+                <button type="button" class="btn btn-primary px-4" @click="{{ $c }}.openConfirm()" x-bind:disabled="!{{ $c }}.valid || {{ $c }}.creating || s.processing">
+                    <span class="size-4" x-bind:class="{{ $c }}.creating && 'anim-spin'" x-html="s.icon({{ $c }}.creating ? 'loader' : 'check')"></span>
+                    <span x-text="{{ $c }}.creating ? s.t('card.creating') : ({{ $c }}.draft.status === 'created' ? s.t('card.save_changes', { key: {{ $c }}.draft.issue_key }) : s.t('card.create'))"></span>
+                </button>
+            </div>
         </div>
     </div>
     @endunless

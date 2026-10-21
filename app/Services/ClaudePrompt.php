@@ -34,6 +34,7 @@ TXT;
     /** How to edit existing YouTrack issues (both modes). */
     private const EDIT_RULES = <<<'TXT'
 Editing existing issues: when the user wants to change an existing YouTrack issue (given by key like DEV-12, by its title or description, as "the issue you just created", or as a correction such as "afinal não era X mas Y, altera o issue"), call `update_issue` with `issue_id` and ONLY the fields that change, and put your short message in its required `message` field. If the issue is only identified by words, call `find_issues` first (use `get_issue` when you need its current description or fields to edit them). If several issues plausibly match, ask which one in plain text; if none matches, say so. When the correction changes the description, send the COMPLETE new Markdown description: start from the current one, apply the user's correction, keep everything else (including exact values such as "15px"). Never invent an issue key. Values for type, priority, assignee, subsystem, state and custom fields must exist in the catalog of the issue's project (use that project's lists; the project key is the part of the key before the last dash). Do not claim an issue was changed unless you called `update_issue`. Attachments: images and files the user sends in this conversation are attached to the YouTrack issue by the app itself (the user ticks which ones on the card, or all of them when the app creates/updates the issue right away). When the user asks to attach an image/file to an existing issue, call `update_issue` with just `issue_id` and `message` (no other field is needed). Never claim a file was attached unless you called `update_issue`, create_issue or the draft tool in this turn.
+Attached issues: the user may attach YouTrack issues to a message, like an image, to say which issue(s) the message is about. A message that carried issues starts with a tag like `[Contexto: DEV-3]` or `[Contexto: DEV-3, DEV-4]`: those issues belong to THAT message only. Never carry a tag over to a later message that has none of its own. When the user says \"o issue\" / \"it\" and no issue is attached to the current message: for a plain QUESTION you may follow the conversation if it is obvious which issue was just discussed; for any CHANGE to an issue (edit, assign, close, reopen) never assume one from earlier messages or tags: ask which issue, or find it with `find_issues`, unless they name it.
 TXT;
 
     /** Questions about many issues (how many, which, list): counted and listed by the app, never guessed or cut short. */
@@ -106,27 +107,39 @@ TXT;
     }
 
     /**
-     * The issue this chat is linked to (created from it, or picked by the user): "change it", "close it" and the like mean this
-     * one. `$issue` carries its current fields, fetched fresh for every message.
+     * The issue the user put in context for the current message: "change it", "close it" and the like mean this one. `$issue`
+     * carries its current fields, fetched fresh for every message. The context is not tied to the chat: it can change at any message.
      */
-    public static function contextBlock(?array $issue): string
+    public static function contextBlock(?array $issues): string
     {
-        if (blank($issue['key'] ?? null)) {
-            return '';
+        $issues = array_values(array_filter((array) $issues, fn ($i) => filled($i['key'] ?? null)));
+        if (! $issues) {
+            // said at the moment it matters: an issue discussed a few messages ago is NOT the one a bare "close it" refers to
+            return <<<'TXT'
+
+
+No YouTrack issue is attached to the user's latest message. If it asks to CHANGE an issue (edit, assign, prioritise, close, reopen, comment) without naming that issue by its key or its title, do NOT pick the one discussed earlier and do NOT call any update: ask which issue they mean (quick replies with the issues discussed in this chat are welcome) and mention they can attach it to the message with the paperclip. Plain questions may follow the conversation when it is obvious which issue was just discussed.
+TXT;
         }
-        $fields = json_encode(array_filter($issue, fn ($v, $k) => $k !== 'url' && filled($v), ARRAY_FILTER_USE_BOTH), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        $keys = implode(', ', array_column($issues, 'key'));
+        $fields = implode("\n", array_map(fn ($i) => json_encode(array_filter($i, fn ($v, $k) => $k !== 'url' && filled($v), ARRAY_FILTER_USE_BOTH), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), $issues));
+        $one = count($issues) === 1;
+        $first = $issues[0]['key'];
+        $meant = $one
+            ? "ASSUME it is the issue meant: whenever the user asks to change, assign, prioritise, close, resolve, reopen or otherwise act on \"the issue\" / \"it\" / \"this\" without naming another issue, they mean {$first}: call `update_issue` with `issue_id` \"{$first}\" right away. Do not call find_issues and do not ask which issue."
+            : 'They are the issues meant by \"the issue\" / \"these\" / \"all of them\": act on the one the wording points to (a key, a title, a state, a person), on ALL of them when the user says so (one `update_issue` call each), and ask which one only if the wording fits two of them equally. Do not call find_issues for them.';
+        $what = $one ? 'the YouTrack issue '.$first.' as context' : 'these YouTrack issues as context: '.$keys;
 
         return <<<TXT
 
 
-Conversation context: this chat is linked to the YouTrack issue {$issue['key']}. Its current fields:
+Issue context: with this message the user attached {$what}, like an image: it belongs to THIS message only (their latest message starts with the tag `[Contexto: {$keys}]`) and is not kept for the next one, so {$meant} Their current fields (one issue per line):
 {$fields}
-Rules for the context issue:
-- Whenever the user asks to change, assign, prioritise, close, resolve, reopen or otherwise act on "the issue" / "it" / "this" without naming another issue, they mean {$issue['key']}: call `update_issue` with `issue_id` "{$issue['key']}" right away. Do not call find_issues and do not ask which issue.
-- To close or resolve it, set `state` to the project's state that means done: choose it from the `states` list of the project in the catalog (e.g. Done, Fixed, Resolved, Closed, Concluído). To reopen it, choose the state that means open/to do. If more than one state fits, or none does, ask which one (with quick replies) instead of guessing.
-- This also applies when the issue was created from this conversation's draft: state changes always go through `update_issue`; other field changes on it follow the usual rules.
-- If the user clearly talks about ANOTHER issue (names another key or title), use that one instead. If they describe a new, different problem, it is a new issue as usual; the context stays.
-- Never claim the issue was changed unless you called `update_issue` in this turn.
+Rules for the issue context:
+- To close or resolve an issue, set `state` to one of the project's `resolved_states` in the catalog (the states YouTrack marks as done; if the list is missing, use `states`). Pick by what the user said, without asking: "fecha"/"fechar"/"close" -> the one named Closed (Fechado); "resolve"/"conclui"/"terminei"/"está feito"/"done"/"complete" -> Completed, Done, Fixed or Resolved (whichever exists); "é duplicado" -> Duplicate; "não vamos fazer" / "won't fix" -> Won't fix / Obsolete if it exists. If only ONE resolved state exists use it. Ask (with quick replies) only if the wording fits two or more of them equally or none. To reopen one, choose the state that means open again (Reopened, otherwise Open / To do).
+- State changes always go through `update_issue` (also for the issue created from this conversation's draft); other field changes on it follow the usual rules.
+- If the user clearly talks about ANOTHER issue (names another key or title), use that one instead. If they describe a new, different problem, it is a new issue as usual.
+- Never claim an issue was changed unless you called `update_issue` for it in this turn.
 TXT;
     }
 

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Conversation;
 use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -97,7 +98,7 @@ it('reports a total of zero instead of treating it as unknown', function () {
 });
 
 it('lists look-alike issues for a draft title without failing the draft when YouTrack errors', function () {
-    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv = Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
     $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
     $conv = $conv->id;
     $row = ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Erro no pagamento', 'project' => ['shortName' => 'DEV'], 'customFields' => []];
@@ -112,7 +113,7 @@ it('lists look-alike issues for a draft title without failing the draft when You
 
 it('flags look-alikes whose title is (nearly) the same as probable duplicates', function () {
     config(['services.youtrack.title_prefix' => 'IssueTesteFabio']);
-    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv = Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
     $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
     $row = fn ($n, $title) => ['id' => "2-$n", 'idReadable' => "DEV-$n", 'summary' => $title, 'project' => ['shortName' => 'DEV'], 'customFields' => []];
     Http::fake(['yt.test/api/issues?*' => Http::response([
@@ -128,7 +129,7 @@ it('flags look-alikes whose title is (nearly) the same as probable duplicates', 
 });
 
 it('also flags a differently titled issue whose description is (nearly) the same, searches the description words too and drops unrelated ones', function () {
-    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv = Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
     $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
     $text = 'Ao carregar no botão pagar com cartão multibanco o ecrã bloqueia e nunca confirma o pagamento do cliente';
     $row = fn ($n, $title, $desc) => ['id' => "2-$n", 'idReadable' => "DEV-$n", 'summary' => $title, 'description' => $desc, 'project' => ['shortName' => 'DEV'], 'customFields' => []];
@@ -148,7 +149,7 @@ it('also flags a differently titled issue whose description is (nearly) the same
 });
 
 it('finds a look-alike for a long title by also searching with fewer words', function () {
-    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv = Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
     $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
     $old = ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Protótipo versão 15 do Quiosque de Visitas', 'description' => '', 'project' => ['shortName' => 'DEV'], 'customFields' => []];
     // YouTrack only answers the loose searches: a query with all the words of the long title finds nothing
@@ -161,14 +162,13 @@ it('finds a look-alike for a long title by also searching with fewer words', fun
 });
 
 it('does not flag a short description as a duplicate by itself', function () {
-    $conv = \App\Models\Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
+    $conv = Conversation::create(['user_id' => auth()->id(), 'title' => 't']);
     $conv->draft()->create(['summary' => 's', 'description' => 'd', 'project' => 'DEV', 'type' => 'Anomaly', 'priority' => 'Major', 'revision' => 1]);
     Http::fake(['yt.test/api/issues?*' => Http::response([['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'Erro no pagamento multibanco', 'description' => 'curto', 'project' => ['shortName' => 'DEV'], 'customFields' => []]])]);
 
     $this->getJson("/api/conversations/{$conv->id}/draft/similar?project=DEV&summary=Erro+no+pagamento&description=curto")->assertOk()
         ->assertJsonPath('issues.0.duplicate', false)->assertJsonPath('issues.0.description_match', null);
 });
-
 
 it('reads multi-value fields (a list of users) and the creator, instead of showing them empty', function () {
     Http::fake(['yt.test/api/issues/DEV-5?*' => Http::response([
