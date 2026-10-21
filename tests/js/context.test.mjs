@@ -343,3 +343,30 @@ test('the tick boxes belong to the selection mode: leaving it drops what was tic
   s.toggleMineSelectMode();
   assert.equal(s.mineSelectMode, false); assert.deepEqual(s.mineSelected, []);
 });
+
+test('the range under a list reads "0-48 (123 issues)", then "48-96 (123 issues)", and the last page ends where the issues end', () => {
+  const s = mk(); s.t = (k, p = {}) => (k === 'mine.total' ? `${p.n} issues` : k);
+  assert.equal(s.rangeLabel(1, 48, 48, 123), '0-48 (123 issues)');
+  assert.equal(s.rangeLabel(2, 48, 48, 123), '48-96 (123 issues)');
+  assert.equal(s.rangeLabel(3, 48, 27, 123), '96-123 (123 issues)');
+  assert.equal(s.rangeLabel(1, 12, 12, null), '0-12');
+});
+
+test('each project has a count of its own: the part of ITS issues on the page, then how many it has', () => {
+  const s = mk(); s.t = (k, p = {}) => (k === 'mine.total' ? `${p.n} issues` : k);
+  const mkIssue = (id, project) => ({ id, project, project_name: project });
+  const list = [mkIssue('A-1', 'A'), mkIssue('A-2', 'A'), mkIssue('B-1', 'B')];
+  assert.deepEqual(s.groupByProject(list, { A: 50, B: 3 }, { A: [48, 50], B: [0, 1] }).map((g) => g.count), ['48-50 (50 issues)', '0-1 (3 issues)']);
+  assert.deepEqual(s.groupByProject(list, { A: 50, B: 3 }, { B: [0, 1] }).map((g) => g.count), ['(50 issues)', '0-1 (3 issues)'], 'without a range only the total is shown');
+  assert.deepEqual(s.groupByProject(list).map((g) => g.count), ['', '']);
+});
+
+test('a quiet search that overtakes a visible one still ends the loading (the list must not stay dimmed)', async () => {
+  const s = mk();
+  on('GET', /\/api\/youtrack\/issues\?/, async () => { await wait(20); return { json: { issues: [issue('DEV-1')], has_more: false, total: 1, page: 1 } }; });
+  const visible = s.searchIssues(1);
+  const quiet = s.searchIssues(1, true);
+  await Promise.all([visible, quiet]);
+  assert.equal(s.issuesLoading, false);
+  assert.equal(s.issueResults.length, 1);
+});

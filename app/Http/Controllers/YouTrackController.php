@@ -67,10 +67,16 @@ class YouTrackController extends Controller
             'state' => ['nullable', 'string', 'max:60'],
             'assignee' => ['nullable', 'string', 'max:120'],
             'page' => ['nullable', 'integer', 'min:1', 'max:5000'],
-            'per_page' => ['nullable', 'integer', 'in:25,50,100'],
+            'per_page' => ['nullable', 'integer', 'in:12,24,48,25,50,100'],
         ]);
+        // sorted by project (then newest first): the page shows one block per project
+        $f['q'] = trim(($f['q'] ?? '').' sort by: project asc, updated desc');
 
-        return $this->run(fn () => $this->yt->search($this->yt->buildQuery($f), (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 25)));
+        return $this->run(function () use ($f) {
+            $result = $this->yt->search($this->yt->buildQuery($f), (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 12));
+
+            return $result + $this->projectInfo($result, '', $f);
+        });
     }
 
     /** The signed-in user's own issues: assigned to them or created by them, open or resolved (YouTrack resolves "me" by the token). */
@@ -92,7 +98,59 @@ class YouTrackController extends Controller
         $f['q'] = trim(($f['q'] ?? '').' sort by: project asc, updated desc');
         $query = $this->mineQuery($f['scope'] ?? 'assigned', $f['status'] ?? 'open').' '.$this->yt->buildQuery($f);
 
-        return $this->run(fn () => $this->yt->search($query, (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 12)));
+        return $this->run(function () use ($f, $query) {
+            $result = $this->yt->search($query, (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 12));
+
+            return $result + $this->projectInfo($result, $this->mineQuery($f['scope'] ?? 'assigned', $f['status'] ?? 'open'), $f);
+        });
+    }
+
+    /**
+     * What the page shows next to each project name: how many issues it has in all (with the same filters), and which of
+     * them are on this page ("48-51 of 50"). Projects come one after the other, so every project after the first starts at
+     * 0; the first one starts after the issues of the projects that sort before it (the sort is by project name).
+     *
+     * @param  array{issues:list<array<string,mixed>>,page:int,per_page:int}  $result
+     * @param  string  $prefix  extra query terms ("for: me #Unresolved" for "my issues")
+     * @return array{project_totals:array<string,?int>,project_ranges:array<string,array{0:int,1:int}>}
+     */
+    private function projectInfo(array $result, string $prefix, array $f): array
+    {
+        $issues = $result['issues'];
+        $keys = array_values(array_unique(array_filter(array_column($issues, 'project'))));
+        $totals = [];
+        foreach ($keys as $key) {
+            $totals[$key] = $this->yt->count(trim($prefix.' '.$this->yt->buildQuery([...$f, 'project' => $key])));
+        }
+
+        $ranges = [];
+        $perProject = array_count_values(array_column($issues, 'project'));
+        foreach ($keys as $i => $key) {
+            $ranges[$key] = [0, $perProject[$key]];
+        }
+        if ($keys) {
+            $offset = ($result['page'] - 1) * $result['per_page'];
+            $first = $keys[0];
+            $before = $offset;
+            if ($offset > 0 && blank($f['project'] ?? null)) {
+                $name = $issues[0]['project_name'] ?? null;
+                $earlier = $name === null ? [] : array_values(array_filter($this->yt->projects(), fn ($p) => $p['key'] !== $first && strcmp($p['name'], $name) < 0));
+                $before = 0;
+                if ($earlier) {
+                    $list = implode(', ', array_map(fn ($p) => '{'.str_replace(['{', '}'], '', $p['key']).'}', $earlier));
+                    $before = $this->yt->count(trim($prefix.' project: '.$list.' '.$this->yt->buildQuery([...$f, 'project' => null]))) ?? $offset;
+                }
+            }
+            $start = $offset - $before;
+            // the guess about the order is only used when it makes sense: it cannot start before 0 or run past the project's total
+            if ($start >= 0 && ($totals[$first] === null || $start + $perProject[$first] <= $totals[$first])) {
+                $ranges[$first] = [$start, $start + $perProject[$first]];
+            } else {
+                unset($ranges[$first]);
+            }
+        }
+
+        return ['project_totals' => $totals, 'project_ranges' => $ranges];
     }
 
     /** The numbers at the top of "your issues". */

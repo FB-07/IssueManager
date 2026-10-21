@@ -22,6 +22,7 @@
             <x-chat.empty-state />
             <x-chat.messages />
             <x-mine.page />
+            <x-issues.page />
         </main>
 
         <x-chat.composer />

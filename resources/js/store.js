@@ -58,7 +58,7 @@ export function createStore(boot) {
         profileMenu: false,
         confirmOpen: false,
         issuesOpen: false,
-        page: boot.page ?? 'chat', // 'chat', or 'mine': the page of the user's own issues (/issues)
+        page: boot.page ?? 'chat', // 'chat'; 'mine': the user's own issues (/issues); 'all': the existing issues (/issues/all)
         editFromMine: false, // the edit window was opened from that page: closing it returns there
         mineScope: 'assigned',
         mineStatus: 'open',
@@ -66,6 +66,10 @@ export function createStore(boot) {
         mineFilters: { project: '', type: '', priority: '', state: '' },
         minePerPage: 12,
         mineSelectMode: false, // the tick boxes are only there while the user is selecting
+        mineProjectTotals: {},
+        mineProjectRanges: {},
+        issueProjectTotals: {},
+        issueProjectRanges: {},
         mineSelected: [], // issues ticked on the page (up to the number that can go with one message)
         mineText: '', // the message written in the bar of the selection
         mineResults: [],
@@ -123,7 +127,7 @@ export function createStore(boot) {
         // ---- issues browser ---------------------------------------------
         issueFilters: { q: '', project: '', type: '', priority: '', state: '', assignee: '' },
         issuePage: 1,
-        issuePerPage: 25,
+        issuePerPage: 12,
         issueTotal: null,
         issueResults: [],
         issuesLoading: false,
@@ -172,8 +176,9 @@ export function createStore(boot) {
             document.addEventListener('touchend', watchSelection);
             document.addEventListener('scroll', () => (this.selection = null), true);
             // the first page of issues is fetched in the background, so "Existing issues" opens with the list already there
-            if (boot.configured) setTimeout(() => !this.issuesOpen && !this.issueResults.length && this.searchIssues(1, true), 1500);
+            if (boot.configured && !boot.page?.startsWith?.('all')) setTimeout(() => !this.issuesOpen && !this.issuesLoading && !this.issueResults.length && this.searchIssues(1, true), 1500);
             if (boot.page === 'mine') this.openMine({ push: false });
+            else if (boot.page === 'all') this.openIssuesPage({ push: false });
             else if (boot.initialId) this.openConversation(boot.initialId, { push: false });
         },
 
@@ -237,7 +242,7 @@ export function createStore(boot) {
             if (e.altKey && !mod && !e.shiftKey) {
                 const actions = {
                     KeyN: () => this.newChat(),
-                    KeyI: () => this.openIssues(),
+                    KeyI: () => this.openIssuesPage(),
                     KeyM: () => this.openMine(),
                     KeyD: () => (this.draftEnabled = !this.draftEnabled),
                     KeyB: () => this.toggleSidebar(),
@@ -294,12 +299,14 @@ export function createStore(boot) {
         },
         get title() {
             if (this.page === 'mine') return this.t('mine.title');
+            if (this.page === 'all') return this.t('issues.title');
 
             return this.activeConversation?.title || this.t('app.name');
         },
         routeFromLocation() {
             const m = location.pathname.match(/^\/c\/(\d+)/);
             if (location.pathname === '/issues') this.openMine({ push: false });
+            else if (location.pathname === '/issues/all') this.openIssuesPage({ push: false });
             else if (m) this.openConversation(Number(m[1]), { push: false });
             else this.resetChat();
         },
@@ -1724,13 +1731,15 @@ export function createStore(boot) {
                 const res = await api('GET', `/api/youtrack/issues?${params}`);
                 if (seq !== issueSearchSeq) return;
                 this.issueResults = res.issues;
+                this.issueProjectTotals = res.project_totals ?? {};
+                this.issueProjectRanges = res.project_ranges ?? {};
                 this.issueHasMore = res.has_more;
                 this.issueTotal = res.total;
                 this.issuePage = res.page;
             } catch (e) {
                 if (!quiet) this.notify(e.message, 'error');
             } finally {
-                if (!quiet && seq === issueSearchSeq) this.issuesLoading = false;
+                if (seq === issueSearchSeq) this.issuesLoading = false; // the latest search ends the loading, quiet or not
             }
         },
         /** Search as the user types (after a short pause), without needing Enter. */
@@ -1770,6 +1779,8 @@ export function createStore(boot) {
         // ---- your issues -----------------------------------------------------
         async openMine({ push = true } = {}) {
             this.stopVoice(true);
+            this.mineSelectMode = false;
+            this.clearMineSelection();
             this.page = 'mine';
             this.sidebarOpen = false;
             if (push && location.pathname !== '/issues') history.pushState({}, '', '/issues');
@@ -1789,6 +1800,8 @@ export function createStore(boot) {
                 const res = await api('GET', `/api/youtrack/mine?${params}`);
                 if (seq !== mineSeq) return;
                 this.mineResults = res.issues;
+                this.mineProjectTotals = res.project_totals ?? {};
+                this.mineProjectRanges = res.project_ranges ?? {};
                 this.mineHasMore = res.has_more;
                 this.mineTotal = res.total;
                 this.minePage = res.page;
@@ -1803,8 +1816,14 @@ export function createStore(boot) {
         },
         /** The issues of the page, one group per project (the server sorts by project, so each project is in one place). */
         get mineGroups() {
+            return this.groupByProject(this.mineResults, this.mineProjectTotals, this.mineProjectRanges);
+        },
+        get issueGroups() {
+            return this.groupByProject(this.issueResults, this.issueProjectTotals, this.issueProjectRanges);
+        },
+        groupByProject(list, totals = {}, ranges = {}) {
             const groups = new Map();
-            for (const i of this.mineResults) {
+            for (const i of list) {
                 const key = i.project ?? '';
                 if (!groups.has(key)) {
                     const p = (this.catalog?.projects ?? []).find((x) => x.key === key);
@@ -1814,13 +1833,32 @@ export function createStore(boot) {
                 groups.get(key).items.push(i);
             }
 
-            return [...groups.values()];
+            // a count of its own for each project: which of ITS issues are on this page, and how many it has: "0-11 (28 issues)", next page "11-22 (28 issues)"
+            return [...groups.values()].map((g) => {
+                const r = ranges[g.key];
+                const total = totals[g.key] != null ? `(${this.t('mine.total', { n: totals[g.key] })})` : '';
+
+                return { ...g, count: [r ? `${r[0]}-${r[1]}` : '', total].filter(Boolean).join(' ') };
+            });
         },
         get mineFilterOptions() {
             return this.filterOptionsFor(this.mineFilters.project);
         },
         get mineFiltersActive() {
             return Object.values(this.mineFilters).some((v) => v !== '') || this.mineQ.trim() !== '';
+        },
+        /** "0/48 (123 issues)", then "48/96 (123 issues)": where the page starts and ends, and how many there are in all. */
+        rangeLabel(page, perPage, shown, total) {
+            const from = (page - 1) * perPage;
+            const range = `${from}-${from + shown}`;
+
+            return total === null ? range : `${range} (${this.t('mine.total', { n: total })})`;
+        },
+        get mineRangeLabel() {
+            return this.rangeLabel(this.minePage, this.minePerPage, this.mineResults.length, this.mineTotal);
+        },
+        get issuesRangeLabel() {
+            return this.rangeLabel(this.issuePage, this.issuePerPage, this.issueResults.length, this.issueTotal);
         },
         /** Page buttons: 1 … current-1 current current+1 … last. */
         get minePageButtons() {
@@ -1899,6 +1937,17 @@ export function createStore(boot) {
                 this.send();
             }
         },
+        /** The page of all the existing issues (/issues/all): the same kind of page as "my issues", without the account and the numbers. */
+        async openIssuesPage({ push = true } = {}) {
+            this.stopVoice(true);
+            this.mineSelectMode = false;
+            this.clearMineSelection();
+            this.page = 'all';
+            this.sidebarOpen = false;
+            if (push && location.pathname !== '/issues/all') history.pushState({}, '', '/issues/all');
+            this.ensureCatalog(); // the filters' values
+            await this.searchIssues(this.issueResults.length ? this.issuePage : 1);
+        },
         /** One of the number tiles at the top: shows exactly those issues. */
         showMine(scope, status) {
             this.mineScope = scope;
@@ -1907,6 +1956,7 @@ export function createStore(boot) {
             return this.searchMine(1);
         },
         /** Opens an issue of the list in the editing window. */
+        /** Opens an issue of a page's list in the editing window (closing it returns to the page). */
         editMine(issue) {
             this.editFromMine = true;
             this.issuePickMode = false;
@@ -1933,6 +1983,7 @@ export function createStore(boot) {
                 this.editFromMine = false;
                 this.issuesOpen = false;
                 if (this.page === 'mine') this.searchMine(this.minePage);
+                else if (this.page === 'all') this.searchIssues(this.issuePage);
             }
         },
         async editIssue(issue) {

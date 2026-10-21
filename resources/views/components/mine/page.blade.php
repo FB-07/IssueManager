@@ -63,7 +63,7 @@
                     <h3 class="mb-2 flex items-center gap-2 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">
                         <x-ui.avatar of="g.icon" size="size-6" />
                         <span x-text="g.name"></span><span class="font-mono text-[11px] font-normal normal-case text-faint" x-show="g.name !== g.key" x-text="g.key"></span>
-                        <span class="ml-auto text-[11px] font-normal normal-case text-faint" x-text="g.items.length"></span>
+                        <span class="ml-auto text-[11px] font-normal normal-case text-faint" x-text="g.count"></span>
                     </h3>
                     <ul class="divide-y divide-line rounded-xl border border-line">
                         <template x-for="i in g.items" x-bind:key="i.id">
@@ -90,7 +90,7 @@
         </div>
 
         <div class="flex flex-wrap items-center justify-between gap-3 text-xs text-muted" x-show="s.mineResults.length">
-            <p x-text="s.mineTotal !== null ? s.t('mine.total', { n: s.mineTotal }) : ''"></p>
+            <p x-text="s.mineRangeLabel"></p>
             <div class="flex items-center gap-1.5">
                 <div class="mr-2 flex items-center gap-1.5"><span x-text="s.t('issues.per_page')"></span>
                     <x-ui.select width="w-auto" trigger="w-20 py-1 text-xs" value="s.minePerPage" select="s.setMinePerPage($value)"

@@ -41,3 +41,9 @@ it('serves the user\'s own issues as a page of the app (/issues) that boots on t
     $this->get('/issues')->assertOk()->assertSee('"page":"mine"', false);
     $this->get('/')->assertOk()->assertSee('"page":"chat"', false);
 });
+
+it('serves the existing issues as a page of the app (/issues/all)', function () {
+    $this->actingAs(User::factory()->create());
+
+    $this->get('/issues/all')->assertOk()->assertSee('"page":"all"', false);
+});

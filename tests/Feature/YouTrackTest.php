@@ -75,7 +75,7 @@ it('filters and paginates the issue search with the total, newest first', functi
     $this->getJson('/api/youtrack/issues?per_page=25&page=3')->assertOk()->assertJsonCount(3, 'issues')->assertJsonPath('has_more', false);
 
     $sent = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), '/api/issues?'))->map(fn ($p) => urldecode($p[0]->url()))->values();
-    expect($sent[0])->toContain('project: {DEV} Type: {Show-stopper} for: {ana.silva} pagamento sort by: updated desc')->toContain('$top=26')->toContain('$skip=0')
+    expect($sent[0])->toContain('project: {DEV} Type: {Show-stopper} for: {ana.silva} pagamento sort by: project asc, updated desc')->toContain('$top=26')->toContain('$skip=0')
         ->and($sent[1])->toContain('$skip=50');
 
     $this->getJson('/api/youtrack/issues?per_page=500')->assertStatus(422);
@@ -201,7 +201,7 @@ it('lists the issues of the signed-in user (assigned or created, open or resolve
         'yt.test/api/issues?*' => Http::response([$row]),
     ]);
 
-    $this->getJson('/api/youtrack/mine?scope=created&status=all&q=pagamento&project=DEV&state=Open&per_page=12')->assertOk()->assertJsonCount(1, 'issues')->assertJsonPath('total', 4);
+    $this->getJson('/api/youtrack/mine?scope=created&status=all&q=pagamento&project=DEV&state=Open&per_page=12')->assertOk()->assertJsonCount(1, 'issues')->assertJsonPath('total', 4)->assertJsonPath('project_totals.DEV', 4);
     $this->getJson('/api/youtrack/mine')->assertOk();
     $this->getJson('/api/youtrack/mine/summary')->assertOk()->assertExactJson(['assigned_open' => 4, 'assigned_resolved' => 4, 'created' => 4]);
     $this->getJson('/api/youtrack/mine?scope=other')->assertStatus(422);
@@ -230,4 +230,36 @@ it('exposes every other custom field of an issue as text, whatever its kind', fu
 
     expect($issue['project_name'])->toBe('Desenvolvimento')->and($issue['comments'])->toBe(3)->and($issue['labels'])->toBe(['urgente'])
         ->and($issue['custom'])->toBe(['Environment' => 'Production', 'Reviewer' => 'Ana Silva', 'Estimation' => '2d 4h', 'Due Date' => '2026-07-01', 'Story points' => '5', 'Notes' => 'ver anexo']);
+});
+
+it('tells each project of a page which of its issues are shown, counting from where the project starts', function () {
+    $row = fn (string $key, string $project, string $name) => ['id' => "2-$key", 'idReadable' => $key, 'summary' => $key, 'project' => ['shortName' => $project, 'name' => $name], 'customFields' => []];
+    Http::fake([
+        'yt.test/api/admin/projects*' => Http::response([
+            ['id' => '0-1', 'shortName' => 'AAA', 'name' => 'Alfa'], ['id' => '0-2', 'shortName' => 'BBB', 'name' => 'Beta'], ['id' => '0-3', 'shortName' => 'CCC', 'name' => 'Gama'],
+        ]),
+        'yt.test/api/issuesGetter/count*' => function ($request) {
+            $q = $request['query'] ?? '';
+
+            return Http::response(['count' => match (true) {
+                str_contains($q, 'project: {AAA}, {BBB}') => 60,       // the projects that sort before Gama
+                str_contains($q, 'project: {CCC}') => 50,
+                str_contains($q, 'project: {DDD}') => 3,
+                default => 0,
+            }]);
+        },
+        'yt.test/api/issues?*' => Http::response([$row('C-1', 'CCC', 'Gama'), $row('C-2', 'CCC', 'Gama'), $row('D-1', 'DDD', 'Zeta')]),
+    ]);
+
+    // page 5 of 12: 48 issues come before it; 60 of those are not Gama's, so... 48 - 60 would be negative: the guess is dropped
+    $r = $this->getJson('/api/youtrack/issues?page=5&per_page=12')->assertOk();
+    expect($r->json('project_totals'))->toBe(['CCC' => 50, 'DDD' => 3])->and($r->json('project_ranges'))->toBe(['DDD' => [0, 1]]);
+
+    // page 6 (offset 60): Gama's issues start right after the 60 before it, so it begins at 0; Zeta follows from 0
+    $r = $this->getJson('/api/youtrack/issues?page=6&per_page=12')->assertOk();
+    expect($r->json('project_ranges'))->toBe(['CCC' => [0, 2], 'DDD' => [0, 1]]);
+
+    // the first page needs no guess at all
+    $r = $this->getJson('/api/youtrack/issues?page=1&per_page=12')->assertOk();
+    expect($r->json('project_ranges'))->toBe(['CCC' => [0, 2], 'DDD' => [0, 1]]);
 });

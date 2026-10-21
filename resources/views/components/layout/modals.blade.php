@@ -151,7 +151,7 @@
             <div class="flex items-center gap-1.5">
                 <div class="mr-2 flex items-center gap-1.5"><span x-text="s.t('issues.per_page')"></span>
                     <x-ui.select width="w-auto" trigger="w-20 py-1 text-xs" value="s.issuePerPage" select="s.setIssuePerPage($value)"
-                        options="[25, 50, 100].map((n) => ({ value: n, label: String(n) }))" searchable="false" label="s.t('issues.per_page')" /></div>
+                        options="[12, 24, 48].map((n) => ({ value: n, label: String(n) }))" searchable="false" label="s.t('issues.per_page')" /></div>
                 <button type="button" class="btn-icon size-8 rotate-180" @click="s.goToIssuePage(s.issuePage - 1)" x-bind:disabled="s.issuePage <= 1 || s.issuesLoading" x-bind:aria-label="s.t('issues.prev')"><x-ui.icon name="chevron-right" /></button>
                 <template x-for="(n, idx) in s.issuePageButtons" x-bind:key="idx">
                     <span>

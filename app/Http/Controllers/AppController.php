@@ -28,7 +28,11 @@ class AppController extends Controller
             'demo' => false,
             'trackerUrl' => config('services.youtrack.url'),
             'configured' => YouTrackClient::configured(),
-            'page' => $request->route()?->getName() === 'mine' ? 'mine' : 'chat',
+            'page' => match ($request->route()?->getName()) {
+                'mine' => 'mine',
+                'issues' => 'all',
+                default => 'chat',
+            },
             'initialId' => $request->route('id') ? (int) $request->route('id') : null,
             'conversations' => $user->conversations()->latest('updated_at')->limit(200)->get()->map(Presenter::conversation(...))->all(),
         ]]);

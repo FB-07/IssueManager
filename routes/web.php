@@ -25,6 +25,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/', AppController::class)->name('home');
     Route::get('/c/{id}', AppController::class)->whereNumber('id')->name('conversation');
     Route::get('/issues', AppController::class)->name('mine');
+    Route::get('/issues/all', AppController::class)->name('issues');
     Route::get('/attachments/{attachment}', [AttachmentController::class, 'show'])->name('attachments.show');
 
     Route::prefix('api')->group(function () {
