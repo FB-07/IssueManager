@@ -22,6 +22,7 @@ return [
         'title' => 'Atalhos de teclado',
         'search_chats' => 'Pesquisar conversas',
         'new_chat' => 'Nova conversa',
+        'mine' => 'Os meus issues',
         'issues' => 'Issues existentes',
         'draft' => 'Ligar/desligar rascunho de Issue',
         'sidebar' => 'Recolher/expandir barra lateral',
@@ -30,7 +31,14 @@ return [
         'close' => 'Fechar',
     ],
 
+    'mine' => [
+        'title' => 'Os meus issues', 'assigned_open' => 'Atribuídos a mim, abertos', 'assigned_resolved' => 'Atribuídos a mim, resolvidos', 'created' => 'Criados por mim',
+        'scope_assigned' => 'Atribuídos a mim', 'scope_created' => 'Criados por mim', 'status_open' => 'Abertos', 'status_resolved' => 'Resolvidos', 'status_all' => 'Todos',
+        'none' => 'Nenhum issue encontrado.', 'total' => ':n issues',
+    ],
+
     'nav' => [
+        'mine' => 'Os meus issues',
         'options' => 'Opções', 'search_chats' => 'Pesquisar conversas', 'search_placeholder' => 'Pesquisar por título…', 'no_matches' => 'Nenhuma conversa encontrada.',
         'select' => 'Selecionar', 'select_all' => 'Selecionar tudo', 'selected' => 'Selecionadas: :n',
         'delete_selected' => 'Apagar :n', 'delete_confirm' => 'Apagar as conversas selecionadas (:n)? Não é possível desfazer.', 'deleted' => 'Conversas apagadas: :n.',
@@ -192,7 +200,7 @@ return [
     ],
 
     'issues' => [
-        'created_by' => 'Criado por :name', 'created_on' => 'Criado em :date', 'updated_on' => 'Atualizado em :date',
+        'details' => 'Detalhes', 'l_created_by' => 'Criado por', 'l_created' => 'Criado em', 'l_updated' => 'Atualizado em', 'l_resolved' => 'Resolvido em', 'l_comments' => 'Comentários',
         'all_projects' => 'Todos os projetos', 'all_types' => 'Todos os tipos', 'all_priorities' => 'Todas as prioridades',
         'all_states' => 'Todos os estados', 'all_assignees' => 'Todos os responsáveis', 'state' => 'Estado',
         'clear' => 'Limpar filtros', 'per_page' => 'Por página', 'prev' => 'Página anterior', 'next' => 'Página seguinte',

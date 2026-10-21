@@ -73,6 +73,48 @@ class YouTrackController extends Controller
         return $this->run(fn () => $this->yt->search($this->yt->buildQuery($f), (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 25)));
     }
 
+    /** The signed-in user's own issues: assigned to them or created by them, open or resolved (YouTrack resolves "me" by the token). */
+    public function mine(Request $request)
+    {
+        $f = $request->validate([
+            'scope' => ['nullable', 'in:assigned,created'],
+            'status' => ['nullable', 'in:open,resolved,all'],
+            'q' => ['nullable', 'string', 'max:200'],
+            'project' => ['nullable', 'string', 'max:50'],
+            'type' => ['nullable', 'string', 'max:60'],
+            'priority' => ['nullable', 'string', 'max:60'],
+            'state' => ['nullable', 'string', 'max:60'],
+            'page' => ['nullable', 'integer', 'min:1', 'max:5000'],
+            'per_page' => ['nullable', 'integer', 'in:12,24,48'],
+        ]);
+        // "mine" (for: me / reporter: me, open or resolved) plus the same filters as the list of existing issues
+        // sorted by project (then newest first) so the page can show one block per project
+        $f['q'] = trim(($f['q'] ?? '').' sort by: project asc, updated desc');
+        $query = $this->mineQuery($f['scope'] ?? 'assigned', $f['status'] ?? 'open').' '.$this->yt->buildQuery($f);
+
+        return $this->run(fn () => $this->yt->search($query, (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 12)));
+    }
+
+    /** The numbers at the top of "your issues". */
+    public function mineSummary()
+    {
+        return $this->run(fn () => [
+            'assigned_open' => $this->yt->count($this->mineQuery('assigned', 'open')),
+            'assigned_resolved' => $this->yt->count($this->mineQuery('assigned', 'resolved')),
+            'created' => $this->yt->count($this->mineQuery('created', 'all')),
+        ]);
+    }
+
+    private function mineQuery(string $scope, string $status): string
+    {
+        $parts = [$scope === 'created' ? 'reporter: me' : 'for: me'];
+        if ($status !== 'all') {
+            $parts[] = $status === 'open' ? '#Unresolved' : '#Resolved';
+        }
+
+        return implode(' ', $parts);
+    }
+
     public function issue(string $id)
     {
         return $this->run(fn () => $this->yt->getIssue($id));

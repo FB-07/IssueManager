@@ -193,3 +193,41 @@ it('keeps working with issues that have no reporter or dates', function () {
 
     $this->getJson('/api/youtrack/issues/DEV-6')->assertOk()->assertJsonPath('reporter', null)->assertJsonPath('created', null)->assertJsonPath('assignee', null);
 });
+
+it('lists the issues of the signed-in user (assigned or created, open or resolved) and counts them', function () {
+    $row = ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 'meu', 'project' => ['shortName' => 'DEV'], 'customFields' => []];
+    Http::fake([
+        'yt.test/api/issuesGetter/count*' => Http::response(['count' => 4]),
+        'yt.test/api/issues?*' => Http::response([$row]),
+    ]);
+
+    $this->getJson('/api/youtrack/mine?scope=created&status=all&q=pagamento&project=DEV&state=Open&per_page=12')->assertOk()->assertJsonCount(1, 'issues')->assertJsonPath('total', 4);
+    $this->getJson('/api/youtrack/mine')->assertOk();
+    $this->getJson('/api/youtrack/mine/summary')->assertOk()->assertExactJson(['assigned_open' => 4, 'assigned_resolved' => 4, 'created' => 4]);
+    $this->getJson('/api/youtrack/mine?scope=other')->assertStatus(422);
+
+    $sent = Http::recorded()->filter(fn ($p) => str_contains($p[0]->url(), '/api/issues?'))->map(fn ($p) => urldecode($p[0]->url()))->values();
+    expect($sent[0])->toContain('reporter: me project: {DEV} State: {Open} pagamento sort by: project asc, updated desc')->toContain('$top=13')->not->toContain('#Unresolved')
+        ->and($sent[1])->toContain('for: me #Unresolved sort by: project asc, updated desc')->toContain('$top=13');
+});
+
+it('exposes every other custom field of an issue as text, whatever its kind', function () {
+    Http::fake(['yt.test/api/issues/DEV-9*' => Http::response([
+        'id' => '2-9', 'idReadable' => 'DEV-9', 'summary' => 's', 'project' => ['shortName' => 'DEV', 'name' => 'Desenvolvimento'], 'commentsCount' => 3, 'tags' => [['name' => 'urgente']],
+        'customFields' => [
+            ['name' => 'Type', '$type' => 'SingleEnumIssueCustomField', 'value' => ['name' => 'Bug']],
+            ['name' => 'Environment', '$type' => 'SingleEnumIssueCustomField', 'value' => ['name' => 'Production']],
+            ['name' => 'Reviewer', '$type' => 'SingleUserIssueCustomField', 'value' => ['fullName' => 'Ana Silva', 'login' => 'ana']],
+            ['name' => 'Estimation', '$type' => 'PeriodIssueCustomField', 'value' => ['presentation' => '2d 4h']],
+            ['name' => 'Due Date', '$type' => 'DateIssueCustomField', 'value' => 1782864000000],
+            ['name' => 'Story points', '$type' => 'SimpleIssueCustomField', 'value' => 5],
+            ['name' => 'Notes', '$type' => 'TextIssueCustomField', 'value' => ['text' => 'ver anexo']],
+            ['name' => 'Empty', '$type' => 'SingleEnumIssueCustomField', 'value' => null],
+        ],
+    ])]);
+
+    $issue = app(YouTrackClient::class)->getIssue('DEV-9');
+
+    expect($issue['project_name'])->toBe('Desenvolvimento')->and($issue['comments'])->toBe(3)->and($issue['labels'])->toBe(['urgente'])
+        ->and($issue['custom'])->toBe(['Environment' => 'Production', 'Reviewer' => 'Ana Silva', 'Estimation' => '2d 4h', 'Due Date' => '2026-07-01', 'Story points' => '5', 'Notes' => 'ver anexo']);
+});

@@ -21,6 +21,7 @@
         <main id="chat-scroll" class="relative flex-1 overflow-y-auto">
             <x-chat.empty-state />
             <x-chat.messages />
+            <x-mine.page />
         </main>
 
         <x-chat.composer />

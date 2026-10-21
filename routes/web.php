@@ -24,6 +24,7 @@ Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->n
 Route::middleware('auth')->group(function () {
     Route::get('/', AppController::class)->name('home');
     Route::get('/c/{id}', AppController::class)->whereNumber('id')->name('conversation');
+    Route::get('/issues', AppController::class)->name('mine');
     Route::get('/attachments/{attachment}', [AttachmentController::class, 'show'])->name('attachments.show');
 
     Route::prefix('api')->group(function () {
@@ -53,6 +54,8 @@ Route::middleware('auth')->group(function () {
             Route::get('/projects', [YouTrackController::class, 'projects']);
             Route::get('/projects/{project}/meta', [YouTrackController::class, 'meta']);
             Route::get('/issues', [YouTrackController::class, 'issues']);
+            Route::get('/mine', [YouTrackController::class, 'mine']);
+            Route::get('/mine/summary', [YouTrackController::class, 'mineSummary']);
             Route::post('/issues', [YouTrackController::class, 'create']);
             Route::get('/issues/{id}', [YouTrackController::class, 'issue']);
             Route::patch('/issues/{id}', [YouTrackController::class, 'update']);

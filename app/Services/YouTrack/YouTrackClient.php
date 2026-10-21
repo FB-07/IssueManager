@@ -22,9 +22,9 @@ use Illuminate\Support\Facades\Log;
 class YouTrackClient
 {
     /** Without the (possibly long) description: for lists of many issues. */
-    private const LIST_FIELDS = 'id,idReadable,summary,updated,created,resolved,reporter(login,fullName),project(shortName,name),customFields(name,value(name,login,fullName))';
+    private const LIST_FIELDS = 'id,idReadable,summary,updated,created,resolved,reporter(login,fullName),project(shortName,name),commentsCount,tags(name),customFields(name,$type,value(name,login,fullName,presentation,text))';
 
-    private const ISSUE_FIELDS = 'id,idReadable,summary,description,updated,created,resolved,reporter(login,fullName),project(shortName,name),customFields(name,value(name,login,fullName))';
+    private const ISSUE_FIELDS = 'id,idReadable,summary,description,updated,created,resolved,reporter(login,fullName),project(shortName,name),commentsCount,tags(name),customFields(name,$type,value(name,login,fullName,presentation,text))';
 
     /** Fields handled explicitly; every other enum-like project field is exposed as a custom field. */
     private const KNOWN = ['Type', 'Priority', 'Subsystem', 'Assignee', 'State'];
@@ -504,6 +504,26 @@ class YouTrackClient
         return $one($value);
     }
 
+    /** What a custom field shows as text, whatever its kind: a name, a person, a period, a text, a date or a number. */
+    private function displayValue(array $field): ?string
+    {
+        $v = $field['value'] ?? null;
+        if ($v === null || $v === [] || $v === '') {
+            return null;
+        }
+        if (is_array($v)) {
+            $one = fn ($x) => is_array($x) ? ($x['presentation'] ?? $x['text'] ?? $x['fullName'] ?? $x['name'] ?? $x['login'] ?? null) : (is_scalar($x) ? (string) $x : null);
+            $parts = array_is_list($v) ? array_filter(array_map($one, $v)) : array_filter([$one($v)]);
+
+            return $parts ? implode(', ', $parts) : null;
+        }
+        if (is_numeric($v) && str_starts_with((string) ($field['$type'] ?? ''), 'Date')) {
+            return date('Y-m-d', intdiv((int) $v, 1000));
+        }
+
+        return is_scalar($v) ? (string) $v : null;
+    }
+
     private function normalize(array $i): array
     {
         $cf = collect($i['customFields'] ?? [])->mapWithKeys(fn ($f) => [$f['name'] => $this->fieldValue($f['value'] ?? null)]);
@@ -515,12 +535,20 @@ class YouTrackClient
             'summary' => $i['summary'] ?? '',
             'description' => $i['description'] ?? '',
             'project' => $i['project']['shortName'] ?? null,
+            'project_name' => $i['project']['name'] ?? null,
+            'labels' => array_values(array_filter(array_map(fn ($t) => $t['name'] ?? null, $i['tags'] ?? []))),
+            'comments' => isset($i['commentsCount']) ? (int) $i['commentsCount'] : null,
             'type' => $cf['Type'] ?? null,
             'priority' => $cf['Priority'] ?? null,
             'assignee' => $cf['Assignee'] ?? null,
             'reporter' => isset($i['reporter']) ? ($i['reporter']['fullName'] ?? $i['reporter']['login'] ?? null) : null, // who created it
             'state' => $cf['State'] ?? null,
             'subsystem' => $cf['Subsystem'] ?? null,
+            // every other custom field of the project (each project has its own), as {name: shown value}
+            'custom' => collect($i['customFields'] ?? [])
+                ->reject(fn ($f) => in_array($f['name'] ?? '', self::KNOWN, true))
+                ->mapWithKeys(fn ($f) => [($f['name'] ?? '') => $this->displayValue($f)])
+                ->filter(fn ($v, $k) => $k !== '' && $v !== null)->all(),
             'url' => config('services.youtrack.url').'/issue/'.$readable,
             'created' => $date($i['created'] ?? null),
             'resolved' => $date($i['resolved'] ?? null),

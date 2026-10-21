@@ -1,7 +1,7 @@
 {{-- keyboard shortcuts --}}
 <x-ui.modal open="s.shortcutsOpen" title="shortcuts.title" width="max-w-md">
     <dl class="space-y-2.5 text-sm">
-        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
+        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+M', 'mine'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
             <div class="flex items-center justify-between gap-4">
                 <dt class="text-muted" x-text="s.t('shortcuts.{{ $label }}')"></dt>
                 <dd class="flex shrink-0 gap-1">
@@ -44,7 +44,7 @@
         </label>
         <div class="rounded-xl border border-line bg-surface-2 p-3.5">
             <p class="flex items-center gap-2 text-sm font-medium"><span class="size-4" x-bind:class="s.demo ? 'text-warn' : 'text-success'" x-html="s.icon(s.demo ? 'alert' : 'check-circle')"></span><span x-text="s.demo ? s.t('settings.demo_title') : s.t('settings.live_title')"></span></p>
-            <p class="mt-1 text-xs leading-relaxed text-muted" x-text="s.demo ? s.t('settings.demo_text') : s.t('settings.live_text')"></p>
+            <p data-no-brand class="mt-1 text-xs leading-relaxed text-muted" x-text="s.demo ? s.t('settings.demo_text') : s.t('settings.live_text')"></p>
         </div>
         <div class="flex items-center gap-3 border-t border-line pt-4">
             <span class="flex size-9 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent" x-text="s.user.name.slice(0, 1)"></span>
@@ -106,7 +106,7 @@
 </x-ui.modal>
 
 {{-- existing issues: search + edit --}}
-<x-ui.modal open="s.issuesOpen" title="issues.title" width="max-w-3xl">
+<x-ui.modal open="s.issuesOpen" title-expr="s.issueEdit ? s.t('issues.details') : s.t('issues.title')" width="max-w-3xl">
     <div x-show="!s.issueEdit" class="space-y-3">
         <form class="flex gap-2" @submit.prevent="s.applyIssueFilters()">
             <input class="field" x-model="s.issueFilters.q" @input="s.searchIssuesSoon()" x-bind:placeholder="s.t('issues.search')" x-bind:aria-label="s.t('issues.search')" maxlength="200">
@@ -167,15 +167,24 @@
     <form x-show="s.issueEdit" x-cloak class="space-y-4" @submit.prevent="s.saveIssue()">
         <template x-if="s.issueEdit">
             <div class="space-y-4">
-                <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
-                    <a class="inline-flex items-center gap-1.5 font-mono font-medium text-fg hover:underline" x-bind:href="s.issueEdit.url" target="_blank" rel="noopener" x-bind:title="s.t('similar.open')">
-                        <span x-text="s.issueEdit.id"></span><x-ui.icon name="external" class="size-3" />
+                <div class="flex flex-wrap items-center gap-2">
+                    <a class="inline-flex items-center gap-1.5 font-mono text-sm font-semibold hover:underline" x-bind:href="s.issueEdit.url" target="_blank" rel="noopener" x-bind:title="s.t('similar.open')">
+                        <span x-text="s.issueEdit.id"></span><x-ui.icon name="external" class="size-3.5" />
                     </a>
-                    <span class="chip" x-show="s.issueEdit.project" x-text="s.issueEdit.project"></span>
-                    <span x-show="s.issueEdit.reporter" x-text="s.t('issues.created_by', { name: s.issueEdit.reporter })"></span>
-                    <span x-show="s.issueEdit.created" x-text="s.t('issues.created_on', { date: s.shortDate(s.issueEdit.created) })"></span>
-                    <span x-show="s.issueEdit.updated" x-text="s.t('issues.updated_on', { date: s.shortDate(s.issueEdit.updated) })"></span>
+                    <span class="chip" x-show="s.issueEdit.state" x-text="s.lbl('state', s.issueEdit.state)"></span>
                 </div>
+                {{-- what YouTrack knows about the issue (read only) --}}
+                <dl class="grid gap-x-6 gap-y-3 rounded-xl border border-line bg-surface-2/50 p-3.5 text-sm sm:grid-cols-2">
+                    <div x-show="s.issueEdit.project"><dt class="text-xs text-muted" x-text="s.t('fields.project')"></dt><dd class="font-medium" x-text="s.issueEdit.project_name ? s.issueEdit.project_name + ' (' + s.issueEdit.project + ')' : s.issueEdit.project"></dd></div>
+                    <div x-show="s.issueEdit.reporter"><dt class="text-xs text-muted" x-text="s.t('issues.l_created_by')"></dt><dd class="font-medium" x-text="s.issueEdit.reporter"></dd></div>
+                    <div x-show="s.issueEdit.created"><dt class="text-xs text-muted" x-text="s.t('issues.l_created')"></dt><dd class="font-medium" x-text="s.shortDate(s.issueEdit.created)"></dd></div>
+                    <div x-show="s.issueEdit.updated"><dt class="text-xs text-muted" x-text="s.t('issues.l_updated')"></dt><dd class="font-medium" x-text="s.shortDate(s.issueEdit.updated)"></dd></div>
+                    <div x-show="s.issueEdit.resolved"><dt class="text-xs text-muted" x-text="s.t('issues.l_resolved')"></dt><dd class="font-medium" x-text="s.shortDate(s.issueEdit.resolved)"></dd></div>
+                    <div x-show="s.issueEdit.comments !== null && s.issueEdit.comments !== undefined"><dt class="text-xs text-muted" x-text="s.t('issues.l_comments')"></dt><dd class="font-medium" x-text="s.issueEdit.comments"></dd></div>
+                    <template x-for="[name, value] in s.issueEditExtraFields" x-bind:key="name"><div><dt class="text-xs text-muted" x-text="s.lbl('custom', name)"></dt><dd class="font-medium" x-text="s.lbl('customValue', value)"></dd></div></template>
+                    <div class="sm:col-span-2" x-show="(s.issueEdit.labels ?? []).length"><dt class="mb-1 text-xs text-muted" x-text="s.t('fields.labels')"></dt>
+                        <dd class="flex flex-wrap gap-1.5"><template x-for="l in s.issueEdit.labels" x-bind:key="l"><span class="chip"><x-ui.icon name="tag" class="size-3" /><span x-text="l"></span></span></template></dd></div>
+                </dl>
                 <div><label class="label" x-text="s.t('fields.summary')"></label><input class="field" x-model="s.issueEdit.summary" maxlength="255" required></div>
                 <div><label class="label" x-text="s.t('fields.description')"></label><textarea rows="5" class="field" x-model="s.issueEdit.description"></textarea></div>
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -190,12 +199,18 @@
                     <div><label class="label" x-text="s.t('fields.assignee')"></label>
                         <x-ui.select searchable="true" value="s.issueEdit.assigneeValue" select="s.issueEdit.assigneeValue = $value" options="(s.issueMeta?.assignees ?? []).map((a) => s.personOption(a))" label="s.t('fields.assignee')" /></div>
                 </div>
+                <div class="grid gap-4 sm:grid-cols-2" x-show="(s.issueMeta?.custom ?? []).length">
+                    <template x-for="cf in (s.issueMeta?.custom ?? [])" x-bind:key="cf.key">
+                        <div><label class="label" x-text="s.lbl('custom', cf.key)"></label>
+                            <x-ui.select value="s.issueEdit.custom[cf.key] ?? ''" select="s.issueEdit.custom[cf.key] = $value" options="cf.values.map((o) => ({ value: o, label: s.lbl('customValue', o) }))" label="s.lbl('custom', cf.key)" /></div>
+                    </template>
+                </div>
                 <div x-show="(s.issueMeta?.subsystems ?? []).length">
                     <label class="label" x-text="s.t('fields.subsystem')"></label>
                     <x-ui.select value="s.issueEdit.subsystem" select="s.issueEdit.subsystem = $value" options="(s.issueMeta?.subsystems ?? []).map((o) => ({ value: o, label: o }))" label="s.t('fields.subsystem')" />
                 </div>
                 <div class="flex justify-end gap-2">
-                    <button type="button" class="btn" @click="s.issueEdit = null" x-text="s.t('common.back')"></button>
+                    <button type="button" class="btn" @click="s.closeIssueEdit()" x-text="s.t('common.back')"></button>
                     <button type="submit" class="btn btn-primary" x-bind:disabled="s.issueSaving" x-text="s.t('common.save')"></button>
                 </div>
             </div>

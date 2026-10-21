@@ -20,6 +20,8 @@ let contextSearchSeq = 0;
 let issueTimer;
 let lastContextFire = 0;
 let issueSearchSeq = 0;
+let mineTimer;
+let mineSeq = 0;
 // when each recent issue was last confirmed to still exist (so reopening the search does not ask YouTrack again right away)
 const recentChecks = new Map();
 const ISSUE_KEY = /^[A-Za-z0-9_.]+-\d+$/;
@@ -56,6 +58,19 @@ export function createStore(boot) {
         profileMenu: false,
         confirmOpen: false,
         issuesOpen: false,
+        page: boot.page ?? 'chat', // 'chat', or 'mine': the page of the user's own issues (/issues)
+        editFromMine: false, // the edit window was opened from that page: closing it returns there
+        mineScope: 'assigned',
+        mineStatus: 'open',
+        mineQ: '',
+        mineFilters: { project: '', type: '', priority: '', state: '' },
+        minePerPage: 12,
+        mineResults: [],
+        mineLoading: false,
+        minePage: 1,
+        mineHasMore: false,
+        mineTotal: null,
+        mineSummary: null,
         toast: null,
         dragging: false,
         renamingId: null,
@@ -155,7 +170,8 @@ export function createStore(boot) {
             document.addEventListener('scroll', () => (this.selection = null), true);
             // the first page of issues is fetched in the background, so "Existing issues" opens with the list already there
             if (boot.configured) setTimeout(() => !this.issuesOpen && !this.issueResults.length && this.searchIssues(1, true), 1500);
-            if (boot.initialId) this.openConversation(boot.initialId, { push: false });
+            if (boot.page === 'mine') this.openMine({ push: false });
+            else if (boot.initialId) this.openConversation(boot.initialId, { push: false });
         },
 
         // ---- i18n ------------------------------------------------------
@@ -219,6 +235,7 @@ export function createStore(boot) {
                 const actions = {
                     KeyN: () => this.newChat(),
                     KeyI: () => this.openIssues(),
+                    KeyM: () => this.openMine(),
                     KeyD: () => (this.draftEnabled = !this.draftEnabled),
                     KeyB: () => this.toggleSidebar(),
                 };
@@ -273,14 +290,18 @@ export function createStore(boot) {
             return this.conversations.find((c) => c.id === this.activeId) ?? null;
         },
         get title() {
+            if (this.page === 'mine') return this.t('mine.title');
+
             return this.activeConversation?.title || this.t('app.name');
         },
         routeFromLocation() {
             const m = location.pathname.match(/^\/c\/(\d+)/);
-            if (m) this.openConversation(Number(m[1]), { push: false });
+            if (location.pathname === '/issues') this.openMine({ push: false });
+            else if (m) this.openConversation(Number(m[1]), { push: false });
             else this.resetChat();
         },
         resetChat() {
+            this.page = 'chat';
             this.activeId = null;
             this.messages = [];
             this.draft = null;
@@ -301,6 +322,7 @@ export function createStore(boot) {
         },
         async openConversation(id, { push = true } = {}) {
             if (this.loadingConversation) return;
+            this.page = 'chat';
             this.sidebarOpen = false;
             this.loadingConversation = true;
             try {
@@ -1438,6 +1460,7 @@ export function createStore(boot) {
         // ---- issues browser -----------------------------------------------
         async openIssues(pick = false, fresh = false) {
             this.issuePickMode = pick === true;
+            this.editFromMine = false;
             this.issuesOpen = true;
             this.issueEdit = null;
             this.sidebarOpen = false;
@@ -1649,8 +1672,12 @@ export function createStore(boot) {
         },
         /** Distinct filter choices; once a project is picked they come from that project only. */
         get issueFilterOptions() {
+            return this.filterOptionsFor(this.issueFilters.project);
+        },
+        /** The values the filters offer: those of the chosen project, or of all of them. */
+        filterOptionsFor(project) {
             const c = this.catalog ?? { projects: [], byProject: {} };
-            const metas = this.issueFilters.project ? [c.byProject?.[this.issueFilters.project]].filter(Boolean) : Object.values(c.byProject ?? {});
+            const metas = project ? [c.byProject?.[project]].filter(Boolean) : Object.values(c.byProject ?? {});
             const uniq = (key) => [...new Set(metas.flatMap((m) => m[key] ?? []))];
             const people = new Map();
             metas.flatMap((m) => m.assignees ?? []).forEach((a) => people.set(a.value, { label: a.label, avatar: a.avatar ?? null }));
@@ -1737,14 +1764,143 @@ export function createStore(boot) {
 
             return this.searchIssues(1);
         },
+        // ---- your issues -----------------------------------------------------
+        async openMine({ push = true } = {}) {
+            this.stopVoice(true);
+            this.page = 'mine';
+            this.sidebarOpen = false;
+            if (push && location.pathname !== '/issues') history.pushState({}, '', '/issues');
+            this.mineLoading = true;
+            this.ensureCatalog(); // the filters' values
+            api('GET', '/api/youtrack/mine/summary').then((s) => (this.mineSummary = s)).catch(() => {});
+            await this.searchMine(1);
+        },
+        async searchMine(page = 1) {
+            clearTimeout(mineTimer);
+            const seq = ++mineSeq;
+            this.mineLoading = true;
+            const params = new URLSearchParams({ scope: this.mineScope, status: this.mineStatus, page, per_page: this.minePerPage });
+            Object.entries(this.mineFilters).forEach(([k, v]) => v !== '' && params.set(k, v));
+            if (this.mineQ.trim()) params.set('q', this.mineQ.trim());
+            try {
+                const res = await api('GET', `/api/youtrack/mine?${params}`);
+                if (seq !== mineSeq) return;
+                this.mineResults = res.issues;
+                this.mineHasMore = res.has_more;
+                this.mineTotal = res.total;
+                this.minePage = res.page;
+            } catch (e) {
+                if (seq === mineSeq) {
+                    this.mineResults = [];
+                    this.notify(e.message, 'error');
+                }
+            } finally {
+                if (seq === mineSeq) this.mineLoading = false;
+            }
+        },
+        /** The issues of the page, one group per project (the server sorts by project, so each project is in one place). */
+        get mineGroups() {
+            const groups = new Map();
+            for (const i of this.mineResults) {
+                const key = i.project ?? '';
+                if (!groups.has(key)) {
+                    const p = (this.catalog?.projects ?? []).find((x) => x.key === key);
+                    // the project's own icon (initials underneath while it loads or when it has none)
+                    groups.set(key, { key, name: i.project_name || key, icon: this.projectOption(p ?? { key, name: key }), items: [] });
+                }
+                groups.get(key).items.push(i);
+            }
+
+            return [...groups.values()];
+        },
+        get mineFilterOptions() {
+            return this.filterOptionsFor(this.mineFilters.project);
+        },
+        get mineFiltersActive() {
+            return Object.values(this.mineFilters).some((v) => v !== '') || this.mineQ.trim() !== '';
+        },
+        /** Page buttons: 1 … current-1 current current+1 … last. */
+        get minePageButtons() {
+            const last = this.mineTotalPages;
+            if (!last) return [];
+            const set = new Set([1, last, this.minePage - 1, this.minePage, this.minePage + 1]);
+            const pages = [...set].filter((n) => n >= 1 && n <= last).sort((a, b) => a - b);
+
+            return pages.flatMap((n, i) => (i > 0 && n - pages[i - 1] > 1 ? ['…', n] : [n]));
+        },
+        goToMinePage(n) {
+            if (n < 1 || n === this.minePage || (this.mineTotalPages && n > this.mineTotalPages) || (!this.mineTotalPages && n > this.minePage && !this.mineHasMore)) return;
+
+            return this.searchMine(n);
+        },
+        get mineTotalPages() {
+            return this.mineTotal === null ? null : Math.max(1, Math.ceil(this.mineTotal / this.minePerPage));
+        },
+        setMineFilter(key, value) {
+            this.mineFilters[key] = value || '';
+            if (key === 'project') {
+                const o = this.mineFilterOptions;
+                if (!o.types.includes(this.mineFilters.type)) this.mineFilters.type = '';
+                if (!o.priorities.includes(this.mineFilters.priority)) this.mineFilters.priority = '';
+                if (!o.states.includes(this.mineFilters.state)) this.mineFilters.state = '';
+            }
+
+            return this.searchMine(1);
+        },
+        resetMineFilters() {
+            this.mineFilters = { project: '', type: '', priority: '', state: '' };
+            this.mineQ = '';
+
+            return this.searchMine(1);
+        },
+        setMinePerPage(n) {
+            this.minePerPage = Number(n);
+
+            return this.searchMine(1);
+        },
+        searchMineSoon() {
+            clearTimeout(mineTimer);
+            this.mineLoading = true;
+            mineTimer = setTimeout(() => this.searchMine(1), 350);
+        },
+        /** One of the number tiles at the top: shows exactly those issues. */
+        showMine(scope, status) {
+            this.mineScope = scope;
+            this.mineStatus = status;
+
+            return this.searchMine(1);
+        },
+        /** Opens an issue of the list in the editing window. */
+        editMine(issue) {
+            this.editFromMine = true;
+            this.issuePickMode = false;
+            this.issuesOpen = true;
+
+            return this.editIssue(issue);
+        },
+        /** The other custom fields of the open issue that cannot be edited here (people, dates, texts, periods…), as [name, value]. */
+        get issueEditExtraFields() {
+            const editable = (this.issueMeta?.custom ?? []).map((c) => c.key);
+
+            return Object.entries(this.issueEdit?.custom ?? {}).filter(([k]) => !editable.includes(k));
+        },
         /** "12 Oct 2026" in the language of the app. */
         shortDate(iso) {
             const d = new Date(iso);
 
             return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(this.locale === 'pt' ? 'pt-PT' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
         },
+        /** Closes the edit window (Back, or after saving); when it came from "your issues" the window goes with it. */
+        closeIssueEdit() {
+            this.issueEdit = null;
+            if (this.editFromMine) {
+                this.editFromMine = false;
+                this.issuesOpen = false;
+                if (this.page === 'mine') this.searchMine(this.minePage);
+            }
+        },
         async editIssue(issue) {
-            this.issueEdit = { ...issue, original: { ...issue } };
+            this.issueEdit = { ...issue, custom: { ...(issue.custom ?? {}) }, original: { ...issue, custom: { ...(issue.custom ?? {}) } } };
             this.issueMeta = null;
             try {
                 this.issueMeta = await api('GET', `/api/youtrack/projects/${encodeURIComponent(issue.project)}/meta`);
@@ -1758,6 +1914,8 @@ export function createStore(boot) {
         },
         async saveIssue() {
             const i = this.issueEdit;
+            // the project's own enum fields that were changed (the others are shown, not edited)
+            const changedCustom = Object.fromEntries((this.issueMeta?.custom ?? []).filter((c) => i.custom?.[c.key] && i.custom[c.key] !== i.original.custom?.[c.key]).map((c) => [c.key, i.custom[c.key]]));
             this.issueSaving = true;
             try {
                 const updated = await api('PATCH', `/api/youtrack/issues/${encodeURIComponent(i.id)}`, {
@@ -1769,9 +1927,11 @@ export function createStore(boot) {
                     ...(i.state && i.state !== i.original.state ? { state: i.state } : {}),
                     ...(i.assigneeValue && i.assigneeValue !== i.originalAssignee ? { assignee: i.assigneeValue } : {}),
                     ...(i.subsystem && i.subsystem !== i.original.subsystem ? { subsystem: i.subsystem } : {}),
+                    ...(Object.keys(changedCustom).length ? { custom_fields: changedCustom } : {}),
                 });
                 this.issueResults = this.issueResults.map((r) => (r.id === updated.id ? updated : r));
-                this.issueEdit = null;
+                this.mineResults = this.mineResults.map((r) => (r.id === updated.id ? updated : r));
+                this.closeIssueEdit();
                 this.notify(this.demo ? this.t('issues.saved_demo') : this.t('issues.saved'), 'success');
             } catch (e) {
                 this.notify(e.message, 'error');

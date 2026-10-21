@@ -34,3 +34,10 @@ it('redirects plain http to https (temporarily) when the app is served over http
     $this->get('http://issuemanager.test/login?x=1')->assertStatus(302)->assertRedirect('https://issuemanager.test/login?x=1');
     $this->get('https://issuemanager.test/login')->assertOk();
 });
+
+it('serves the user\'s own issues as a page of the app (/issues) that boots on that page', function () {
+    $this->actingAs(User::factory()->create(['email' => 'a@proside.pt']));
+
+    $this->get('/issues')->assertOk()->assertSee('"page":"mine"', false);
+    $this->get('/')->assertOk()->assertSee('"page":"chat"', false);
+});

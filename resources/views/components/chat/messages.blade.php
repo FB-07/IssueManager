@@ -1,4 +1,4 @@
-<section x-show="s.activeId || s.messages.length > 0 || s.processing" x-cloak class="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
+<section x-show="s.page === 'chat' && (s.activeId || s.messages.length > 0 || s.processing)" x-cloak class="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
     <div x-show="s.loadingConversation" class="flex justify-center py-10 text-muted"><x-ui.icon name="loader" class="anim-spin size-5" /></div>
 
     <template x-for="m in s.messages" x-bind:key="m.id">

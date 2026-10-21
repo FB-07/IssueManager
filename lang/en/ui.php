@@ -22,6 +22,7 @@ return [
         'title' => 'Keyboard shortcuts',
         'search_chats' => 'Search chats',
         'new_chat' => 'New chat',
+        'mine' => 'My issues',
         'issues' => 'Existing issues',
         'draft' => 'Turn issue draft on/off',
         'sidebar' => 'Collapse/expand sidebar',
@@ -30,7 +31,14 @@ return [
         'close' => 'Close',
     ],
 
+    'mine' => [
+        'title' => 'My issues', 'assigned_open' => 'Assigned to me, open', 'assigned_resolved' => 'Assigned to me, resolved', 'created' => 'Created by me',
+        'scope_assigned' => 'Assigned to me', 'scope_created' => 'Created by me', 'status_open' => 'Open', 'status_resolved' => 'Resolved', 'status_all' => 'All',
+        'none' => 'No issues found.', 'total' => ':n issues',
+    ],
+
     'nav' => [
+        'mine' => 'My issues',
         'options' => 'Options', 'search_chats' => 'Search chats', 'search_placeholder' => 'Search by title…', 'no_matches' => 'No chats found.',
         'select' => 'Select', 'select_all' => 'Select all', 'selected' => 'Selected: :n',
         'delete_selected' => 'Delete :n', 'delete_confirm' => 'Delete the selected conversations (:n)? This cannot be undone.', 'deleted' => 'Conversations deleted: :n.',
@@ -192,7 +200,7 @@ return [
     ],
 
     'issues' => [
-        'created_by' => 'Created by :name', 'created_on' => 'Created :date', 'updated_on' => 'Updated :date',
+        'details' => 'Details', 'l_created_by' => 'Created by', 'l_created' => 'Created', 'l_updated' => 'Updated', 'l_resolved' => 'Resolved', 'l_comments' => 'Comments',
         'all_projects' => 'All projects', 'all_types' => 'All types', 'all_priorities' => 'All priorities',
         'all_states' => 'All states', 'all_assignees' => 'All assignees', 'state' => 'State',
         'clear' => 'Clear filters', 'per_page' => 'Per page', 'prev' => 'Previous page', 'next' => 'Next page',

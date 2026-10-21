@@ -4,6 +4,7 @@ import collapse from '@alpinejs/collapse';
 import { createStore } from './store';
 import { combo } from './combo';
 import { initTooltips } from './tooltip';
+import { initBrand } from './brand';
 
 window.Alpine = Alpine;
 
@@ -25,3 +26,5 @@ document.addEventListener('alpine:init', () => {
 
 initTooltips();
 Alpine.start();
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initBrand);
+else initBrand();
