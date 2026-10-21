@@ -94,7 +94,7 @@ return [
         'duplicate_held' => 'Antes de criar: já existe um issue que parece duplicado. Revê o rascunho abaixo; nada foi criado.',
         'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
-        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
+        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'jump_bottom' => 'Ir para o fim', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
     'fields' => [
         'state' => 'Estado',

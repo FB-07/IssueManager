@@ -1,5 +1,18 @@
 <section x-show="s.page === 'chat' && (s.activeId || s.messages.length > 0 || s.processing)" x-cloak class="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
-    <div x-show="s.loadingConversation" class="flex justify-center py-10 text-muted"><x-ui.icon name="loader" class="anim-spin size-5" /></div>
+    {{-- a conversation opening: its messages, as placeholders --}}
+    <div x-show="s.loadingConversation" x-cloak class="space-y-6" role="status" aria-busy="true">
+        <span class="sr-only" x-text="s.t('common.loading')"></span>
+        <div class="flex justify-end" aria-hidden="true"><span class="skeleton h-10 w-2/5 rounded-2xl"></span></div>
+        <div class="flex gap-3" aria-hidden="true">
+            <span class="skeleton size-7 shrink-0 rounded-lg"></span>
+            <span class="min-w-0 flex-1 space-y-2.5"><span class="skeleton block h-3.5 w-11/12"></span><span class="skeleton block h-3.5 w-4/5"></span><span class="skeleton block h-3.5 w-2/3"></span></span>
+        </div>
+        <div class="flex justify-end" aria-hidden="true"><span class="skeleton h-10 w-1/3 rounded-2xl"></span></div>
+        <div class="flex gap-3" aria-hidden="true">
+            <span class="skeleton size-7 shrink-0 rounded-lg"></span>
+            <span class="min-w-0 flex-1 space-y-2.5"><span class="skeleton block h-3.5 w-5/6"></span><span class="skeleton block h-3.5 w-3/4"></span></span>
+        </div>
+    </div>
 
     <template x-for="m in s.messages" x-bind:key="m.id">
         <div class="anim-rise">

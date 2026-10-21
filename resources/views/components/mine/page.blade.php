@@ -16,7 +16,8 @@
             @foreach ([['assigned_open', 'assigned', 'open', 'assigned_open'], ['assigned_resolved', 'assigned', 'resolved', 'assigned_resolved'], ['created', 'created', 'all', 'created']] as [$k, $scope, $status, $label])
                 <button type="button" class="rounded-xl border px-3 py-2.5 text-left transition hover:bg-surface-2"
                         x-bind:class="s.mineScope === '{{ $scope }}' && s.mineStatus === '{{ $status }}' ? 'border-accent/50 bg-accent-soft' : 'border-line'" @click="s.showMine('{{ $scope }}', '{{ $status }}')">
-                    <span class="block text-xl font-semibold tabular-nums" x-text="s.mineSummary?.{{ $k }} ?? '–'"></span>
+                    <span class="skeleton block h-7 w-10" x-show="!s.mineSummary" aria-hidden="true"></span>
+                    <span class="block text-xl font-semibold tabular-nums" x-show="s.mineSummary" x-text="s.mineSummary?.{{ $k }} ?? '–'"></span>
                     <span class="block text-xs text-muted" x-text="s.t('mine.{{ $label }}')"></span>
                 </button>
             @endforeach
@@ -53,7 +54,7 @@
         </div>
         <button type="button" class="btn-ghost btn py-1.5" x-show="s.mineFiltersActive" x-cloak @click="s.resetMineFilters()"><x-ui.icon name="x" /><span x-text="s.t('issues.clear')"></span></button>
 
-        <p class="py-6 text-center text-sm text-faint" x-show="s.mineLoading && !s.mineResults.length" x-text="s.t('common.loading')"></p>
+        <div x-show="s.mineLoading && !s.mineResults.length" x-cloak><x-ui.skeleton-list /></div>
         <p class="py-6 text-center text-sm text-faint" x-show="!s.mineLoading && s.mineResults.length === 0" x-text="s.t('mine.none')"></p>
 
         {{-- one block per project --}}

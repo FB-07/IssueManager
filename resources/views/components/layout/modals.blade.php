@@ -128,7 +128,7 @@
             <button type="button" class="btn-ghost btn py-1.5" x-show="s.issueFiltersActive" @click="s.resetIssueFilters()"><x-ui.icon name="x" /><span x-text="s.t('issues.clear')"></span></button>
         </div>
 
-        <p class="py-6 text-center text-sm text-faint" x-show="s.issuesLoading" x-text="s.t('common.loading')"></p>
+        <div x-show="s.issuesLoading && !s.issueResults.length" x-cloak><x-ui.skeleton-list :groups="1" :rows="5" /></div>
         <p class="py-6 text-center text-sm text-faint" x-show="!s.issuesLoading && s.issueResults.length === 0" x-text="s.t('issues.none')"></p>
 
         <div class="max-h-[42dvh] overflow-y-auto rounded-xl border border-line transition-opacity" x-show="s.issueResults.length" x-bind:class="s.issuesLoading && 'opacity-50'">

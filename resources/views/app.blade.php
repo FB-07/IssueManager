@@ -18,11 +18,20 @@
     <div class="flex min-w-0 flex-1 flex-col">
         <x-layout.header />
 
-        <main id="chat-scroll" class="relative flex-1 overflow-y-auto">
+        <main id="chat-scroll" class="relative flex-1 overflow-y-auto" @scroll.passive="s.onChatScroll($el)" x-effect="s.messages.length; s.processing; $nextTick(() => s.onChatScroll($el))">
             <x-chat.empty-state />
             <x-chat.messages />
             <x-mine.page />
             <x-issues.page />
+
+            {{-- back to the end of the chat (sticks to the bottom of the scrolled area, takes no space) --}}
+            <div class="pointer-events-none sticky bottom-0 z-20 h-0" x-show="s.page === 'chat'">
+                <button type="button" x-show="s.showJump" x-cloak x-transition.opacity @click="s.scrollBottom()"
+                        class="pointer-events-auto absolute bottom-3 left-1/2 flex size-9 -translate-x-1/2 items-center justify-center rounded-full border border-line bg-surface text-fg shadow-[var(--shadow)] transition hover:bg-surface-2"
+                        x-bind:aria-label="s.t('chat.jump_bottom')" x-bind:title="s.t('chat.jump_bottom')">
+                    <x-ui.icon name="arrow-down" class="size-[18px]" />
+                </button>
+            </div>
         </main>
 
         <x-chat.composer />

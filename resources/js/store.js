@@ -54,6 +54,7 @@ export function createStore(boot) {
         sidebarOpen: false,
         settingsOpen: false,
         shortcutsOpen: false,
+        showJump: false, // the chat is scrolled up: the arrow that takes it back to the end shows
         altLabel: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌥' : 'Alt', // how the Alt key is written in shortcut hints
         profileMenu: false,
         confirmOpen: false,
@@ -446,6 +447,10 @@ export function createStore(boot) {
 
             // a direct creation (draft mode off) that failed: bring the editable card back so it can be fixed and retried
             return this.draft?.status === 'error' ? ([...this.messages].reverse().find((m) => m.role === 'assistant' && m.kind === 'text')?.id ?? null) : null;
+        },
+        /** Shows the "back down" arrow when the chat is scrolled up from its end. */
+        onChatScroll(el) {
+            this.showJump = el.scrollHeight - el.scrollTop - el.clientHeight > 240;
         },
         scrollBottom(instant = false) {
             const el = document.getElementById('chat-scroll');
