@@ -40,9 +40,13 @@ class TurnController extends Controller
             return response()->json(['message' => __('ui.errors.empty_message')], 422);
         }
 
+        // the model starts ANOTHER issue in a conversation that already created one: a fresh draft, the created issue stays as it is
+        $raw = $reply['draft_patch'] ?? null;
+        $fresh = is_array($raw) && ! empty($raw['new_issue']) && filled($c->draft?->issue_key);
+
         try {
             $patch = YouTrackClient::configured()
-                ? DraftPatch::sanitize($reply['draft_patch'] ?? null, $c->draft?->project, $yt)
+                ? DraftPatch::sanitize($raw, $fresh ? null : $c->draft?->project, $yt)
                 : null;
         } catch (TrackerException $e) {
             return $e->response();
@@ -60,7 +64,7 @@ class TurnController extends Controller
             $patch = null; // a batch replaces the single draft for this turn
         }
 
-        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch, $similar, $issues) {
+        return DB::transaction(function () use ($request, $c, $text, $reply, $patch, $batch, $similar, $issues, $fresh) {
             // the issues attached to the message stay with it (like its images), so a chat about several issues shows which one each message was about
             $user = $c->messages()->create(['role' => 'user', 'kind' => 'text', 'body' => $text, 'meta' => $issues ? ['contexts' => $issues] : null]);
 
@@ -76,6 +80,10 @@ class TurnController extends Controller
                 ]);
             }
 
+            if ($fresh && $patch) {
+                $c->draft?->delete();
+                $c->unsetRelation('draft');
+            }
             $draft = $c->draft;
             if ($patch) {
                 $draft ??= $c->draft()->make(['revision' => 0, 'status' => 'draft']);

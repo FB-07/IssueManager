@@ -647,9 +647,10 @@ export function createStore(boot) {
 
                 // Always offer an assignee while the draft has none (done by the app so it never depends on the model)
                 let askedAssignee = false;
-                const people = this.peopleFor(catalog, patch?.project ?? this.draft?.project);
+                const current = patch?.new_issue ? null : this.draft; // "another issue": nothing of the one before carries over
+                const people = this.peopleFor(catalog, patch?.project ?? current?.project);
                 const named = people.some((a) => text.toLowerCase().includes(a.label.split(' ')[0].toLowerCase()));
-                const hasAssignee = (patch?.assignee && people.some((a) => a.value === patch.assignee)) || this.draft?.assignee;
+                const hasAssignee = (patch?.assignee && people.some((a) => a.value === patch.assignee)) || current?.assignee;
                 if (this.draftEnabled && patch && !hasAssignee && !named && !this.assigneeDeclined.has(this.activeId) && people.length) {
                     text = `${text.trim()}\n\n${this.t('chat.ask_assignee', { names: people.map((a) => a.label).join(', ') })}`;
                     askedAssignee = true;
@@ -1736,11 +1737,21 @@ export function createStore(boot) {
 
             return this.searchIssues(1);
         },
+        /** "12 Oct 2026" in the language of the app. */
+        shortDate(iso) {
+            const d = new Date(iso);
+
+            return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString(this.locale === 'pt' ? 'pt-PT' : 'en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+        },
         async editIssue(issue) {
-            this.issueEdit = { ...issue };
+            this.issueEdit = { ...issue, original: { ...issue } };
             this.issueMeta = null;
             try {
                 this.issueMeta = await api('GET', `/api/youtrack/projects/${encodeURIComponent(issue.project)}/meta`);
+                // the issue carries the assignee's name; the form works with the login the list of people is keyed by
+                const person = (this.issueMeta.assignees ?? []).find((a) => a.label === issue.assignee);
+                this.issueEdit.assigneeValue = person?.value ?? null;
+                this.issueEdit.originalAssignee = person?.value ?? null;
             } catch (e) {
                 this.notify(e.message, 'error');
             }
@@ -1754,6 +1765,10 @@ export function createStore(boot) {
                     description: i.description ?? '',
                     type: i.type,
                     priority: i.priority,
+                    // only what was changed: a field the user did not touch is left exactly as it is in YouTrack
+                    ...(i.state && i.state !== i.original.state ? { state: i.state } : {}),
+                    ...(i.assigneeValue && i.assigneeValue !== i.originalAssignee ? { assignee: i.assigneeValue } : {}),
+                    ...(i.subsystem && i.subsystem !== i.original.subsystem ? { subsystem: i.subsystem } : {}),
                 });
                 this.issueResults = this.issueResults.map((r) => (r.id === updated.id ? updated : r));
                 this.issueEdit = null;

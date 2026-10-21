@@ -150,7 +150,7 @@ TXT;
             return '';
         }
 
-        return "\n\nIssue created in this conversation: ".$draft['issue_key']." (the one meant by \"the issue\" unless the user names another). Its fields:\n"
+        return "\n\nIssue created in this conversation: ".$draft['issue_key']." (the one meant by \"the issue\" unless the user names another). A conversation is NOT limited to one issue: when the user asks for another one (\"cria mais um\", a new problem), create it with the tool using `new_issue: true`; never say that only one issue fits in a conversation and never tell the user to open a new chat. Its fields:\n"
             .json_encode($draft, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     }
 
@@ -190,6 +190,7 @@ Behaviour:
 
 {$quickRules}
 
+- A conversation can hold several issues, one after the other: when the current draft already has an `issue_key` (it was created) and the user asks for ANOTHER issue ("cria mais um", a different problem), call `update_issue_draft` with `new_issue: true` and ALL the fields from scratch; the created one stays as it is. Never say that only one issue card fits in a conversation and never tell the user to open a new chat.
 - The issue created from THIS conversation's draft (if the draft below has an `issue_key`) is edited through `update_issue_draft` (the user confirms saving with the button): when the user corrects it, call `update_issue_draft` with the changed fields. For any OTHER existing issue use `update_issue`.
 
 Valid catalog values (use exactly these strings). `projects` lists the projects; `byProject[KEY]` has the valid types, priorities, subsystems, states, sprints, assignees (value = login) and custom fields of that project. After choosing the project, use ONLY values from that project's lists (an empty list means: leave that field out):
@@ -225,6 +226,7 @@ PROMPT;
                     ],
                     'sprint' => $str + ['description' => 'Only if the user mentioned a sprint.'],
                     'subsystem' => $str + ['description' => 'Subsystem from the catalog. Always infer the best match.'],
+                    'new_issue' => ['type' => 'boolean', 'description' => 'true when the user asks for ANOTHER, different issue while this conversation already has an issue created ("cria mais um", a new problem): the previous issue is left untouched and this call starts a new one, so fill ALL the fields from scratch. Leave it out when changing the current draft.'],
                 ],
                 'required' => ['message'],
             ],

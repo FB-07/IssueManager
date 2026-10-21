@@ -105,6 +105,7 @@ class YouTrackController extends Controller
             'description' => ['sometimes', 'nullable', 'string', 'max:50000'],
             'type' => ['sometimes', 'nullable', 'string', 'max:60'],
             'priority' => ['sometimes', 'nullable', 'string', 'max:60'],
+            'state' => ['sometimes', 'nullable', 'string', 'max:60'],
             'assignee' => ['sometimes', 'nullable', 'string', 'max:120'],
             'subsystem' => ['sometimes', 'nullable', 'string', 'max:120'],
             'custom_fields' => ['sometimes', 'array'],

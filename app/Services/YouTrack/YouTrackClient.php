@@ -520,6 +520,7 @@ class YouTrackClient
             'assignee' => $cf['Assignee'] ?? null,
             'reporter' => isset($i['reporter']) ? ($i['reporter']['fullName'] ?? $i['reporter']['login'] ?? null) : null, // who created it
             'state' => $cf['State'] ?? null,
+            'subsystem' => $cf['Subsystem'] ?? null,
             'url' => config('services.youtrack.url').'/issue/'.$readable,
             'created' => $date($i['created'] ?? null),
             'resolved' => $date($i['resolved'] ?? null),

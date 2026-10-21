@@ -192,6 +192,7 @@ return [
     ],
 
     'issues' => [
+        'created_by' => 'Criado por :name', 'created_on' => 'Criado em :date', 'updated_on' => 'Atualizado em :date',
         'all_projects' => 'Todos os projetos', 'all_types' => 'Todos os tipos', 'all_priorities' => 'Todas as prioridades',
         'all_states' => 'Todos os estados', 'all_assignees' => 'Todos os responsáveis', 'state' => 'Estado',
         'clear' => 'Limpar filtros', 'per_page' => 'Por página', 'prev' => 'Página anterior', 'next' => 'Página seguinte',

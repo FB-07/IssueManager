@@ -320,3 +320,18 @@ it('discards the draft of a conversation, only for its owner and never one alrea
     IssueDraft::where('conversation_id', $id)->update(['status' => 'created']);
     call_as($this->a, 'DELETE', "/api/conversations/$id/draft")->assertStatus(409);
 });
+
+it('starts a fresh draft when the model asks for another issue, and leaves the created one alone', function () {
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Primeiro']]);
+    IssueDraft::where('conversation_id', $id)->update(['status' => 'created', 'issue_key' => 'DEV-1']);
+
+    // without the flag the patch edits the created issue's draft, as before
+    $r = turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['summary' => 'Primeiro, corrigido']]);
+    expect($r->json('draft.issue_key'))->toBe('DEV-1')->and($r->json('draft.summary'))->toBe('Primeiro, corrigido');
+
+    // with it, a new draft replaces the finished one
+    $r = turn($this->a, $id, ['text' => 'ok', 'draft_patch' => ['new_issue' => true, 'summary' => 'Segundo']]);
+    expect($r->json('draft.summary'))->toBe('Segundo')->and($r->json('draft.issue_key'))->toBeNull()->and($r->json('draft.status'))->toBe('draft');
+    expect(IssueDraft::where('conversation_id', $id)->count())->toBe(1);
+});

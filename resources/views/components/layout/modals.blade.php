@@ -167,7 +167,15 @@
     <form x-show="s.issueEdit" x-cloak class="space-y-4" @submit.prevent="s.saveIssue()">
         <template x-if="s.issueEdit">
             <div class="space-y-4">
-                <p class="font-mono text-xs text-muted" x-text="s.issueEdit.id"></p>
+                <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted">
+                    <a class="inline-flex items-center gap-1.5 font-mono font-medium text-fg hover:underline" x-bind:href="s.issueEdit.url" target="_blank" rel="noopener" x-bind:title="s.t('similar.open')">
+                        <span x-text="s.issueEdit.id"></span><x-ui.icon name="external" class="size-3" />
+                    </a>
+                    <span class="chip" x-show="s.issueEdit.project" x-text="s.issueEdit.project"></span>
+                    <span x-show="s.issueEdit.reporter" x-text="s.t('issues.created_by', { name: s.issueEdit.reporter })"></span>
+                    <span x-show="s.issueEdit.created" x-text="s.t('issues.created_on', { date: s.shortDate(s.issueEdit.created) })"></span>
+                    <span x-show="s.issueEdit.updated" x-text="s.t('issues.updated_on', { date: s.shortDate(s.issueEdit.updated) })"></span>
+                </div>
                 <div><label class="label" x-text="s.t('fields.summary')"></label><input class="field" x-model="s.issueEdit.summary" maxlength="255" required></div>
                 <div><label class="label" x-text="s.t('fields.description')"></label><textarea rows="5" class="field" x-model="s.issueEdit.description"></textarea></div>
                 <div class="grid gap-4 sm:grid-cols-2">
@@ -175,6 +183,16 @@
                         <x-ui.select value="s.issueEdit.type" select="s.issueEdit.type = $value" options="(s.issueMeta?.types ?? []).map((o) => ({ value: o, label: s.lbl('type', o) }))" label="s.t('fields.type')" /></div>
                     <div><label class="label" x-text="s.t('fields.priority')"></label>
                         <x-ui.select value="s.issueEdit.priority" select="s.issueEdit.priority = $value" options="(s.issueMeta?.priorities ?? []).map((o) => ({ value: o, label: s.lbl('priority', o) }))" label="s.t('fields.priority')" /></div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div><label class="label" x-text="s.t('issues.state')"></label>
+                        <x-ui.select value="s.issueEdit.state" select="s.issueEdit.state = $value" options="(s.issueMeta?.states ?? []).map((o) => ({ value: o, label: s.lbl('state', o) }))" label="s.t('issues.state')" /></div>
+                    <div><label class="label" x-text="s.t('fields.assignee')"></label>
+                        <x-ui.select searchable="true" value="s.issueEdit.assigneeValue" select="s.issueEdit.assigneeValue = $value" options="(s.issueMeta?.assignees ?? []).map((a) => s.personOption(a))" label="s.t('fields.assignee')" /></div>
+                </div>
+                <div x-show="(s.issueMeta?.subsystems ?? []).length">
+                    <label class="label" x-text="s.t('fields.subsystem')"></label>
+                    <x-ui.select value="s.issueEdit.subsystem" select="s.issueEdit.subsystem = $value" options="(s.issueMeta?.subsystems ?? []).map((o) => ({ value: o, label: o }))" label="s.t('fields.subsystem')" />
                 </div>
                 <div class="flex justify-end gap-2">
                     <button type="button" class="btn" @click="s.issueEdit = null" x-text="s.t('common.back')"></button>
