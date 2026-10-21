@@ -312,3 +312,34 @@ test('checking the recent issues keeps their order, whatever order YouTrack answ
   assert.deepEqual([...s.goneIssues].sort(), ['DEV-62', 'DEV-65']);
   assert.deepEqual(JSON.parse(localStorage.getItem('im.contexts')).map((c) => c.key), ['DEV-61', 'DEV-63', 'DEV-64', 'DEV-66']);
 });
+
+// ---- "my issues": ticking issues and starting a chat about them ---------------------------------------------------------------
+test('ticked issues of "my issues" go to a new chat as context, and the message written in the bar is sent with them', () => {
+  const s = mk(); s.page = 'mine';
+  const sent = [];
+  s.send = () => sent.push({ text: s.composer.text, keys: s.attachedIssues.map((i) => i.key) });
+  s.toggleMineSelect(issue('DEV-1')); s.toggleMineSelect(issue('DEV-2')); s.toggleMineSelect(issue('DEV-1'));
+  assert.deepEqual(s.mineSelected.map((i) => i.id), ['DEV-2'], 'ticking again unticks');
+  s.toggleMineSelect(issue('DEV-3'));
+  s.mineText = '  resume estes  ';
+  s.startChatFromMine();
+  assert.equal(s.page, 'chat');
+  assert.deepEqual(sent, [{ text: 'resume estes', keys: ['DEV-2', 'DEV-3'] }]);
+  assert.deepEqual(s.mineSelected, []); assert.equal(s.mineText, '');
+
+  s.page = 'mine'; s.toggleMineSelect(issue('DEV-7')); s.startChatFromMine();
+  assert.equal(sent.length, 1, 'without a message nothing is sent: the issues wait in the box');
+  assert.deepEqual(s.attachedIssues.map((i) => i.key), ['DEV-7']);
+});
+test('no more than the issues one message can carry can be ticked', () => {
+  const s = mk();
+  for (let n = 1; n <= 7; n++) s.toggleMineSelect(issue(`DEV-${n}`));
+  assert.equal(s.mineSelected.length, 5);
+});
+test('the tick boxes belong to the selection mode: leaving it drops what was ticked', () => {
+  const s = mk();
+  s.toggleMineSelectMode(); s.toggleMineSelect(issue('DEV-1'));
+  assert.equal(s.mineSelectMode, true); assert.equal(s.mineSelected.length, 1);
+  s.toggleMineSelectMode();
+  assert.equal(s.mineSelectMode, false); assert.deepEqual(s.mineSelected, []);
+});

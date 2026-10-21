@@ -32,6 +32,7 @@ return [
     ],
 
     'mine' => [
+        'selected' => 'Selecionados: :n', 'clear' => 'Limpar seleção', 'write_placeholder' => 'Escreve uma mensagem sobre estes issues…', 'send' => 'Enviar para um chat novo', 'open_chat' => 'Abrir num chat novo', 'select_issue' => 'Selecionar :key',
         'title' => 'Os meus issues', 'assigned_open' => 'Atribuídos a mim, abertos', 'assigned_resolved' => 'Atribuídos a mim, resolvidos', 'created' => 'Criados por mim',
         'scope_assigned' => 'Atribuídos a mim', 'scope_created' => 'Criados por mim', 'status_open' => 'Abertos', 'status_resolved' => 'Resolvidos', 'status_all' => 'Todos',
         'none' => 'Nenhum issue encontrado.', 'total' => ':n issues',

@@ -32,6 +32,7 @@ return [
     ],
 
     'mine' => [
+        'selected' => 'Selected: :n', 'clear' => 'Clear selection', 'write_placeholder' => 'Write a message about these issues…', 'send' => 'Send in a new chat', 'open_chat' => 'Open in a new chat', 'select_issue' => 'Select :key',
         'title' => 'My issues', 'assigned_open' => 'Assigned to me, open', 'assigned_resolved' => 'Assigned to me, resolved', 'created' => 'Created by me',
         'scope_assigned' => 'Assigned to me', 'scope_created' => 'Created by me', 'status_open' => 'Open', 'status_resolved' => 'Resolved', 'status_all' => 'All',
         'none' => 'No issues found.', 'total' => ':n issues',

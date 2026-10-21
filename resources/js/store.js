@@ -65,6 +65,9 @@ export function createStore(boot) {
         mineQ: '',
         mineFilters: { project: '', type: '', priority: '', state: '' },
         minePerPage: 12,
+        mineSelectMode: false, // the tick boxes are only there while the user is selecting
+        mineSelected: [], // issues ticked on the page (up to the number that can go with one message)
+        mineText: '', // the message written in the bar of the selection
         mineResults: [],
         mineLoading: false,
         minePage: 1,
@@ -1862,6 +1865,39 @@ export function createStore(boot) {
             clearTimeout(mineTimer);
             this.mineLoading = true;
             mineTimer = setTimeout(() => this.searchMine(1), 350);
+        },
+        isMineSelected(id) {
+            return this.mineSelected.some((i) => i.id === id);
+        },
+        toggleMineSelect(issue) {
+            if (this.isMineSelected(issue.id)) {
+                this.mineSelected = this.mineSelected.filter((i) => i.id !== issue.id);
+            } else if (this.mineSelected.length >= MAX_ISSUES) {
+                this.notify(this.t('errors.too_many_issues', { max: MAX_ISSUES }), 'error');
+            } else {
+                this.mineSelected = [...this.mineSelected, issue];
+            }
+        },
+        toggleMineSelectMode() {
+            this.mineSelectMode = !this.mineSelectMode;
+            if (!this.mineSelectMode) this.clearMineSelection();
+        },
+        clearMineSelection() {
+            this.mineSelected = [];
+            this.mineText = '';
+        },
+        /** A new chat with the ticked issues attached; with a message, it is sent right away. */
+        startChatFromMine() {
+            const issues = [...this.mineSelected];
+            const text = this.mineText.trim();
+            this.mineSelectMode = false;
+            this.clearMineSelection();
+            this.newChat(); // goes to the chat, empty
+            issues.forEach((i) => this.attachIssue(i));
+            if (text) {
+                this.composer.text = text;
+                this.send();
+            }
         },
         /** One of the number tiles at the top: shows exactly those issues. */
         showMine(scope, status) {
