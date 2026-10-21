@@ -370,3 +370,26 @@ test('a quiet search that overtakes a visible one still ends the loading (the li
   assert.equal(s.issuesLoading, false);
   assert.equal(s.issueResults.length, 1);
 });
+
+// ---- analysis page: chart geometry ------------------------------------------------------------------------------------------
+test('the created/resolved columns are capped at 24px, start from one baseline and grow with the value; the backlog line ends on its last point', () => {
+  const s = mk(); s.t = (k, p = {}) => `${k} ${Object.values(p).join('/')}`;
+  s.analytics = { granularity: 'week', series: [
+    { start: '2026-10-05', created: 4, resolved: 1, open: 10 }, { start: '2026-10-12', created: 8, resolved: 8, open: 10 }, { start: '2026-10-19', created: 0, resolved: 0, open: 12 },
+  ] };
+  const bars = s.analyticsBars;
+  assert.equal(bars.bars.length, 3);
+  assert.ok(bars.bars[1].created.startsWith('M') && bars.bars[1].resolved.startsWith('M'));
+  assert.equal(bars.bars[2].created, '', 'a zero draws no column');
+  assert.ok(bars.ticks[4].value >= 8 && bars.ticks[0].value === 0, 'the axis reaches past the largest value, from zero');
+  const widths = bars.bars.map((b) => Number(/H([\d.]+)Q/.exec(b.created)?.[1] ?? 0));
+  assert.ok(bars.bars[0].title.includes('analytics.tip_bars 4/1'));
+  const line = s.analyticsBacklog;
+  assert.equal(line.points.length, 3);
+  assert.equal(line.end.value, 12);
+  assert.ok(line.line.startsWith('M') && line.area.endsWith('Z'));
+  s.analytics = null;
+  assert.deepEqual(s.analyticsBars.bars, []); assert.equal(s.analyticsBacklog.end, null);
+  assert.equal(s.barMax([{ count: 3 }, { count: 9 }]), 9); assert.equal(s.barMax([]), 1);
+  void widths;
+});

@@ -60,7 +60,7 @@ const show = (el) => {
     }
     if (!el.dataset.tip) return;
     current = el;
-    timer = setTimeout(() => current === el && place(el), DELAY);
+    timer = setTimeout(() => current === el && place(el), Number(el.dataset.tipDelay ?? DELAY));
 };
 
 export function initTooltips() {

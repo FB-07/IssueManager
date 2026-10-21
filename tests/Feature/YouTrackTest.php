@@ -263,3 +263,28 @@ it('tells each project of a page which of its issues are shown, counting from wh
     $r = $this->getJson('/api/youtrack/issues?page=1&per_page=12')->assertOk();
     expect($r->json('project_ranges'))->toBe(['CCC' => [0, 2], 'DDD' => [0, 1]]);
 });
+
+it('serves the analysis numbers computed from the issues of YouTrack', function () {
+    $now = now()->getTimestampMs();
+    $issue = fn (string $id, int $created, ?int $resolved, ?string $assignee) => [
+        'id' => "2-$id", 'created' => $created, 'resolved' => $resolved, 'reporter' => ['fullName' => 'Rui'],
+        'project' => ['shortName' => 'DEV', 'name' => 'Dev'],
+        'customFields' => array_values(array_filter([
+            ['name' => 'State', 'value' => ['name' => $resolved ? 'Done' : 'Open']], ['name' => 'Priority', 'value' => ['name' => 'Normal']],
+            $assignee ? ['name' => 'Assignee', 'value' => ['fullName' => $assignee]] : null,
+        ])),
+    ];
+    Http::fake(['yt.test/api/issues?*' => Http::response([
+        $issue('1', $now - 86400000, null, 'Ana'), $issue('2', $now - 3 * 86400000, $now - 86400000, 'Ana'), $issue('3', $now - 2 * 86400000, null, null),
+    ])]);
+
+    $r = $this->getJson('/api/youtrack/analytics?granularity=month&project=DEV')->assertOk();
+
+    expect($r->json('kpis.total'))->toBe(3)->and($r->json('kpis.open'))->toBe(2)->and($r->json('kpis.unassigned_open'))->toBe(1)
+        ->and($r->json('series'))->toHaveCount(12)->and($r->json('assignees.0'))->toMatchArray(['name' => 'Ana', 'open' => 1, 'resolved' => 1])
+        ->and($r->json('capped'))->toBeFalse();
+    $this->getJson('/api/youtrack/analytics?granularity=day')->assertStatus(422);
+
+    $sent = Http::recorded()->map(fn ($p) => urldecode($p[0]->url()))->first(fn ($u) => str_contains($u, '/api/issues?'));
+    expect($sent)->toContain('project: {DEV}');
+});

@@ -30,6 +30,11 @@
             <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.issues')"></span>
             <span class="ml-auto flex gap-1 text-xs text-faint opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" aria-hidden="true"><kbd class="font-sans" x-text="s.altLabel"></kbd><kbd class="font-sans">I</kbd></span>
         </button>
+        <button type="button" class="btn-ghost btn group w-full justify-start" @click="s.openAnalytics()" x-bind:class="[s.page === 'analytics' && 'bg-surface-2', s.sidebarCollapsed && 'lg:justify-center lg:px-0']" x-bind:title="s.sidebarCollapsed ? s.t('nav.analytics') : null">
+            <x-ui.icon name="chart" class="shrink-0" />
+            <span x-bind:class="s.sidebarCollapsed && 'lg:hidden'" x-text="s.t('nav.analytics')"></span>
+            <span class="ml-auto flex gap-1 text-xs text-faint opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" x-bind:class="s.sidebarCollapsed && 'lg:hidden'" aria-hidden="true"><kbd class="font-sans" x-text="s.altLabel"></kbd><kbd class="font-sans">A</kbd></span>
+        </button>
     </div>
 
     {{-- history --}}

@@ -31,6 +31,7 @@ class AppController extends Controller
             'page' => match ($request->route()?->getName()) {
                 'mine' => 'mine',
                 'issues' => 'all',
+                'analytics' => 'analytics',
                 default => 'chat',
             },
             'initialId' => $request->route('id') ? (int) $request->route('id') : null,

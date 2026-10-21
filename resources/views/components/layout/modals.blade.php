@@ -1,7 +1,7 @@
 {{-- keyboard shortcuts --}}
 <x-ui.modal open="s.shortcutsOpen" title="shortcuts.title" width="max-w-md">
     <dl class="space-y-2.5 text-sm">
-        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+M', 'mine'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
+        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+M', 'mine'], ['alt+A', 'analytics'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
             <div class="flex items-center justify-between gap-4">
                 <dt class="text-muted" x-text="s.t('shortcuts.{{ $label }}')"></dt>
                 <dd class="flex shrink-0 gap-1">

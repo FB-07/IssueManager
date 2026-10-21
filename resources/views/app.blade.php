@@ -23,6 +23,7 @@
             <x-chat.messages />
             <x-mine.page />
             <x-issues.page />
+            <x-analytics.page />
 
             {{-- back to the end of the chat (sticks to the bottom of the scrolled area, takes no space) --}}
             <div class="pointer-events-none sticky bottom-0 z-20 h-0" x-show="s.page === 'chat'">

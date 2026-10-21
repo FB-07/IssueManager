@@ -166,6 +166,53 @@ class YouTrackClient
         ];
     }
 
+    /**
+     * Every issue (optionally of one project) reduced to what the analysis needs, cached for a few minutes. Read in pages of
+     * 500 up to `$cap` issues; `capped` says the cap was hit (the numbers are then those of the newest ones).
+     *
+     * @return array{issues:list<array<string,mixed>>,capped:bool}
+     */
+    public function analyticsIssues(?string $project = null, int $cap = 20000): array
+    {
+        return Cache::remember($this->cacheKey('analytics.'.md5((string) $project.$cap)), 300, function () use ($project, $cap) {
+            $query = trim(($project ? 'project: {'.str_replace(['{', '}'], '', $project).'} ' : '').'sort by: created desc');
+            $fields = 'created,resolved,reporter(login,fullName),project(shortName,name),customFields(name,value(name,login,fullName))';
+            $out = [];
+            $skip = 0;
+            $capped = false;
+
+            while (true) {
+                $rows = $this->get('/api/issues', ['query' => $query, 'fields' => $fields, '$top' => 500, '$skip' => $skip]);
+                foreach ($rows as $i) {
+                    $cf = collect($i['customFields'] ?? [])->mapWithKeys(fn ($f) => [$f['name'] => $f['value'] ?? null]);
+                    $people = fn ($v) => collect(is_array($v) && ! array_is_list($v) ? [$v] : (array) $v)->map(fn ($p) => is_array($p) ? ($p['fullName'] ?? $p['login'] ?? $p['name'] ?? null) : null)->filter()->values()->all();
+                    $name = fn ($v) => is_array($v) ? ($v['name'] ?? null) : null;
+                    $out[] = [
+                        'created' => (int) ($i['created'] ?? 0),
+                        'resolved' => isset($i['resolved']) ? (int) $i['resolved'] : null,
+                        'project' => $i['project']['shortName'] ?? null,
+                        'project_name' => $i['project']['name'] ?? null,
+                        'reporter' => $i['reporter']['fullName'] ?? $i['reporter']['login'] ?? null,
+                        'assignees' => $people($cf['Assignee'] ?? null),
+                        'state' => $name($cf['State'] ?? null),
+                        'type' => $name($cf['Type'] ?? null),
+                        'priority' => $name($cf['Priority'] ?? null),
+                    ];
+                }
+                if (count($rows) < 500) {
+                    break;
+                }
+                $skip += 500;
+                if ($skip >= $cap) {
+                    $capped = true;
+                    break;
+                }
+            }
+
+            return ['issues' => $out, 'capped' => $capped];
+        });
+    }
+
     /** Total issues for a query. YouTrack computes it asynchronously (-1 while pending), so retry briefly. */
     public function count(string $query): ?int
     {

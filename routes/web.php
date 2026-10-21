@@ -26,6 +26,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/c/{id}', AppController::class)->whereNumber('id')->name('conversation');
     Route::get('/issues', AppController::class)->name('mine');
     Route::get('/issues/all', AppController::class)->name('issues');
+    Route::get('/analytics', AppController::class)->name('analytics');
     Route::get('/attachments/{attachment}', [AttachmentController::class, 'show'])->name('attachments.show');
 
     Route::prefix('api')->group(function () {
@@ -55,6 +56,7 @@ Route::middleware('auth')->group(function () {
             Route::get('/projects', [YouTrackController::class, 'projects']);
             Route::get('/projects/{project}/meta', [YouTrackController::class, 'meta']);
             Route::get('/issues', [YouTrackController::class, 'issues']);
+            Route::get('/analytics', [YouTrackController::class, 'analytics']);
             Route::get('/mine', [YouTrackController::class, 'mine']);
             Route::get('/mine/summary', [YouTrackController::class, 'mineSummary']);
             Route::post('/issues', [YouTrackController::class, 'create']);

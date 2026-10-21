@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\TrackerException;
+use App\Services\Analytics;
 use App\Services\YouTrack\YouTrackClient;
 use Illuminate\Http\Request;
 
@@ -171,6 +172,18 @@ class YouTrackController extends Controller
         }
 
         return implode(' ', $parts);
+    }
+
+    /** The numbers for the analysis page (created / resolved per period, backlog, people, distributions). */
+    public function analytics(Request $request)
+    {
+        $f = $request->validate(['granularity' => ['nullable', 'in:week,month,year'], 'project' => ['nullable', 'string', 'max:50']]);
+
+        return $this->run(function () use ($f) {
+            $data = $this->yt->analyticsIssues($f['project'] ?? null);
+
+            return Analytics::build($data['issues'], $f['granularity'] ?? 'week') + ['capped' => $data['capped'], 'generated_at' => now()->toIso8601String()];
+        });
     }
 
     public function issue(string $id)
