@@ -163,6 +163,64 @@ export function chatSlice() {
 
             return [...people.values()];
         },
+        /** The last exchange (your message and Claude's answer) when it can be taken back; null while something is on its way or the answer did something in YouTrack. */
+        get redoPair() {
+            if (this.processing || !this.activeId) return null;
+            const [u, a] = this.messages.slice(-2);
+            if (!u || !a || u.role !== 'user' || a.role !== 'assistant' || a.kind !== 'text') return null;
+            if (String(u.id).startsWith('tmp-') || String(a.id).startsWith('tmp-') || a.meta?.direct) return null;
+            if ((a.meta?.batch?.items ?? []).some((i) => i.status !== 'pending')) return null;
+
+            return { user: u, assistant: a };
+        },
+        /** Takes the last exchange back on the server and in the chat; gives the removed user message, or null. */
+        async takeBack() {
+            if (!this.redoPair) return null;
+            try {
+                const res = await api('DELETE', `/api/conversations/${this.activeId}/messages/last`);
+                this.messages = this.messages.slice(0, -2);
+                this.draft = res.draft;
+                this.pending.clear();
+                this.syncConversation(res.conversation);
+
+                return res.removed;
+            } catch (e) {
+                this.notify(e.message, 'error');
+
+                return null;
+            }
+        },
+        /** The files of a removed message, fetched again from where they were stored, as the box and `send` expect them. */
+        async filesOfMessage(m) {
+            const out = [];
+            for (const a of m.attachments ?? []) {
+                try {
+                    const blob = await (await fetch(a.url, { credentials: 'same-origin' })).blob();
+                    const file = new File([blob], a.name, { type: a.mime || blob.type });
+                    out.push({ id: `f-${nextUid()}`, file, name: a.name, size: file.size, kind: a.kind, preview: a.kind === 'image' ? URL.createObjectURL(file) : null });
+                } catch {
+                    this.notify(this.t('errors.file_type', { name: a.name }), 'error');
+                }
+            }
+
+            return out;
+        },
+        /** Answers the last message again: the answer is dropped and the same message is sent once more. */
+        async regenerate() {
+            const m = await this.takeBack();
+            if (!m) return;
+            await this.send(m.body ?? '', await this.filesOfMessage(m), this.issuesOf(m));
+        },
+        /** Puts the last message back in the box (text, files and attached issues) to be corrected; its answer is dropped. */
+        async editLast() {
+            const m = await this.takeBack();
+            if (!m) return;
+            this.clearComposer();
+            this.composer.text = m.body ?? '';
+            this.composer.files = await this.filesOfMessage(m);
+            this.attachedIssues = this.issuesOf(m);
+            this.focusComposer();
+        },
         /** The stop button: ends the answer being written; the message stays and the reply becomes "message cancelled". */
         stopAnswer() {
             answerAbort?.abort('stop');

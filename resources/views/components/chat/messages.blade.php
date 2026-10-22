@@ -39,6 +39,11 @@
                         <blockquote x-show="s.splitQuote(m.body).quote" class="mb-1.5 line-clamp-4 whitespace-pre-line border-l-2 border-accent pl-2.5 text-[13px] text-muted" x-text="s.splitQuote(m.body).quote"></blockquote>
                         <span class="whitespace-pre-wrap" x-text="s.splitQuote(m.body).text"></span>
                     </div>
+                    <template x-if="s.redoPair?.user.id === m.id">
+                        <button type="button" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-faint transition hover:bg-surface-2 hover:text-fg" @click="s.editLast()" x-bind:title="s.t('chat.edit_last')">
+                            <x-ui.icon name="pencil" class="size-3.5" /><span x-text="s.t('chat.edit_last')"></span>
+                        </button>
+                    </template>
                 </div>
             </template>
 
@@ -61,6 +66,11 @@
                         </template>
                         <template x-if="m.id === s.messages.at(-1)?.id && s.quickReplies.length && !m.meta?.batch">
                             <x-chat.quick-replies />
+                        </template>
+                        <template x-if="s.redoPair?.assistant.id === m.id">
+                            <button type="button" class="mt-2 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-faint transition hover:bg-surface-2 hover:text-fg" @click="s.regenerate()" x-bind:title="s.t('chat.regenerate')">
+                                <x-ui.icon name="refresh" class="size-3.5" /><span x-text="s.t('chat.regenerate')"></span>
+                            </button>
                         </template>
                         <template x-if="m.meta?.card && m.id !== s.lastCardId">
                             <p class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-xs text-muted">

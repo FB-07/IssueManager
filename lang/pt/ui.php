@@ -142,7 +142,7 @@ return [
     'chat' => [
         'similar_held' => 'Antes de criar: já existem issues parecidos. Revê o rascunho abaixo; nada foi criado.',
         'duplicate_held' => 'Antes de criar: já existe um issue que parece duplicado. Revê o rascunho abaixo; nada foi criado.',
-        'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'assign_me' => 'Atribui-me a mim', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
+        'edit_last' => 'Editar', 'regenerate' => 'Regenerar', 'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'assign_me' => 'Atribui-me a mim', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
         'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'jump_bottom' => 'Ir para o fim', 'long_notice' => 'Esta conversa já é longa: cada mensagem custa mais e o Claude pode perder o fio. Uma conversa nova costuma dar melhores respostas.', 'long_new' => 'Nova conversa', 'commenting' => 'A comentar no YouTrack…', 'commenting_issue' => 'A adicionar o comentário ao Issue.', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
@@ -272,6 +272,7 @@ return [
         'message_too_long' => 'A mensagem é demasiado longa (máximo :max caracteres).',
         'voice_network' => 'O ditado por voz precisa de ligação à internet (o browser envia o áudio ao serviço de reconhecimento). Verifica a ligação e tenta de novo.', 'voice_unsupported' => 'Este browser não suporta ditado por voz. Usa o Chrome, o Edge ou o Safari.', 'voice_denied' => 'O browser não tem permissão para usar o microfone. Autoriza-o nas definições do site.', 'voice_no_mic' => 'Não foi encontrado nenhum microfone.', 'voice_failed' => 'Não foi possível usar o ditado por voz. Tenta novamente.',
         'nothing_to_change' => 'Não encontrei nada válido para alterar no Issue.',
+        'cannot_redo' => 'Já não é possível anular esta troca: dela já saiu algo criado ou alterado no YouTrack.',
         'comment_not_found' => 'Esse comentário não foi encontrado nesta conversa.',
         'comment_not_yours' => 'Esse comentário não é teu, por isso não pode ser editado.',
         'unknown_project' => 'Projeto desconhecido: :project',

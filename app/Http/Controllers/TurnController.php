@@ -80,6 +80,12 @@ class TurnController extends Controller
                 ]);
             }
 
+            // what the draft was before this turn touched it, so that taking the turn back can restore it
+            $before = $patch ? ($c->draft ? $c->draft->only([...array_keys($c->draft->getAttributes())]) : ['__none' => true]) : null;
+            if ($before && ! isset($before['__none'])) {
+                unset($before['id'], $before['conversation_id'], $before['created_at'], $before['updated_at']);
+            }
+
             if ($fresh && $patch) {
                 $c->draft?->delete();
                 $c->unsetRelation('draft');
@@ -127,6 +133,7 @@ class TurnController extends Controller
                     'revision' => $patch && ! $direct ? $draft->revision : null,
                     'batch' => $batch ? ['items' => $batch] : null,
                     'asked_assignee' => ! empty($reply['asked_assignee']) ? true : null,
+                    'draft_before' => $before,
                     'replies' => QuickReplies::sanitize($reply['replies'] ?? [], allowActions: true) ?: null,
                 ]),
             ]);

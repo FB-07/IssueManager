@@ -2,6 +2,7 @@
 
 use App\Models\Conversation;
 use App\Models\IssueDraft;
+use App\Models\Message;
 use App\Models\User;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
@@ -378,4 +379,36 @@ it('gives a comment edited from the chat a card of its own and keeps the old car
     $res = call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'Versão 2', 'comment_id' => '4-1'])->assertOk()
         ->assertJsonPath('message.meta.edited', true)->assertJsonPath('original.id', $card->json('message.id'))->assertJsonPath('original.meta.comment', 'Versão 2');
     expect($res->json('message.id'))->not->toBe($card->json('message.id'));
+});
+
+it('takes back the last exchange, restoring the draft it changed, and refuses once something depends on it', function () {
+    fake_yt_for_edit();
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+
+    // first turn creates the draft; the second one changes it
+    call_as($this->a, 'POST', "/api/conversations/$id/turn", ['body' => 'um erro', 'assistant' => json_encode(['text' => 'Rascunho', 'draft_patch' => ['summary' => 'Erro A', 'description' => 'd', 'project' => 'DEV', 'type' => 'Task', 'priority' => 'Major']])])->assertOk();
+    call_as($this->a, 'POST', "/api/conversations/$id/turn", ['body' => 'muda o título', 'assistant' => json_encode(['text' => 'Mudei', 'draft_patch' => ['summary' => 'Erro B']])])->assertOk();
+    expect(IssueDraft::where('conversation_id', $id)->first()->summary)->toBe('Erro B');
+
+    $res = call_as($this->a, 'DELETE', "/api/conversations/$id/messages/last")->assertOk()
+        ->assertJsonPath('removed.body', 'muda o título')->assertJsonPath('draft.summary', 'Erro A');
+    expect($res->json('removed.role'))->toBe('user')->and(Message::where('conversation_id', $id)->count())->toBe(2);
+
+    // taking back the first exchange removes the draft it created
+    call_as($this->a, 'DELETE', "/api/conversations/$id/messages/last")->assertOk()->assertJsonPath('draft', null);
+    expect(IssueDraft::where('conversation_id', $id)->count())->toBe(0)->and(Message::where('conversation_id', $id)->count())->toBe(0);
+
+    // nothing left, and somebody else's conversation is not reachable
+    call_as($this->a, 'DELETE', "/api/conversations/$id/messages/last")->assertStatus(409);
+    call_as($this->b, 'DELETE', "/api/conversations/$id/messages/last")->assertNotFound();
+});
+
+it('does not take back an answer that already did something in YouTrack', function () {
+    fake_yt_for_edit();
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    call_as($this->a, 'POST', "/api/conversations/$id/turn", ['body' => 'cria', 'assistant' => json_encode(['text' => 'Rascunho', 'draft_patch' => ['summary' => 'Erro A', 'description' => 'd', 'project' => 'DEV', 'type' => 'Task', 'priority' => 'Major']])])->assertOk();
+    // a card of what the app did afterwards (an issue created) comes after the answer: the last message is no longer the answer
+    Message::create(['conversation_id' => $id, 'role' => 'assistant', 'kind' => 'creation-result', 'meta' => ['key' => 'DEV-1']]);
+
+    call_as($this->a, 'DELETE', "/api/conversations/$id/messages/last")->assertStatus(409);
 });

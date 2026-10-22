@@ -8,6 +8,7 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DraftController;
 use App\Http\Controllers\IssueCommentController;
+use App\Http\Controllers\MessageRedoController;
 use App\Http\Controllers\IssueEditController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\TurnController;
@@ -41,6 +42,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/conversations/{conversation}', [ConversationController::class, 'update'])->whereNumber('conversation');
         Route::delete('/conversations/{conversation}', [ConversationController::class, 'destroy'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/turn', TurnController::class)->whereNumber('conversation');
+        Route::delete('/conversations/{conversation}/messages/last', MessageRedoController::class)->whereNumber('conversation');
         Route::patch('/conversations/{conversation}/draft', [DraftController::class, 'update'])->whereNumber('conversation');
         Route::delete('/conversations/{conversation}/draft', [DraftController::class, 'destroy'])->whereNumber('conversation');
         Route::post('/conversations/{conversation}/messages/{message}/batch', BatchController::class)->whereNumber(['conversation', 'message'])->middleware('throttle:20,1');

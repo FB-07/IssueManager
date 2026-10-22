@@ -142,7 +142,7 @@ return [
     'chat' => [
         'similar_held' => 'Before creating it: similar issues already exist. Check the draft below; nothing was created.',
         'duplicate_held' => 'Before creating it: an issue that looks like a duplicate already exists. Check the draft below; nothing was created.',
-        'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'assign_me' => 'Assign to me', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
+        'edit_last' => 'Edit', 'regenerate' => 'Regenerate', 'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'assign_me' => 'Assign to me', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
         'updating' => 'Updating the issue in YouTrack…', 'updating_issue' => 'Updating the issue in YouTrack.',
         'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'preparing' => 'Preparing the answer… :time', 'cancelled' => 'Message cancelled', 'jump_bottom' => 'Jump to the end', 'long_notice' => 'This conversation is already long: every message costs more and Claude may lose the thread. A new conversation usually gives better answers.', 'long_new' => 'New chat', 'commenting' => 'Commenting in YouTrack…', 'commenting_issue' => 'Adding the comment to the issue.', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
 
@@ -272,6 +272,7 @@ return [
         'message_too_long' => 'The message is too long (maximum :max characters).',
         'voice_network' => 'Voice dictation needs an internet connection (the browser sends the audio to its recognition service). Check your connection and try again.', 'voice_unsupported' => 'This browser does not support voice dictation. Use Chrome, Edge or Safari.', 'voice_denied' => 'The browser is not allowed to use the microphone. Allow it in the site settings.', 'voice_no_mic' => 'No microphone was found.', 'voice_failed' => 'Voice dictation failed. Please try again.',
         'nothing_to_change' => 'I found nothing valid to change on the issue.',
+        'cannot_redo' => 'This exchange can no longer be taken back: something was already created or changed in YouTrack from it.',
         'comment_not_found' => 'That comment was not found in this conversation.',
         'comment_not_yours' => 'That comment is not yours, so it cannot be edited.',
         'unknown_project' => 'Unknown project: :project',
