@@ -44,16 +44,7 @@
         <div class="sticky top-0 z-10 -mx-3 bg-surface px-5 pb-1 pt-2" x-show="s.conversations.length > 0">
             <div class="relative flex items-center justify-between" x-show="!s.selectMode">
                 <span class="text-[13px] font-semibold  uppercase tracking-wider text-muted" x-text="s.t('nav.history')"></span>
-                <button type="button" class="btn-icon size-7" @click.stop="s.historyMenu = !s.historyMenu" aria-haspopup="menu" x-bind:aria-expanded="s.historyMenu" x-bind:aria-label="s.t('nav.options')" x-bind:title="s.t('nav.options')"><x-ui.icon name="more" class="size-4" /></button>
-                <div x-show="s.historyMenu" x-cloak @click.outside="s.historyMenu = false" @keydown.escape.window="s.historyMenu = false" role="menu"
-                     class="anim-rise absolute right-0 top-full z-30 mt-1 w-56 rounded-xl border border-line bg-surface p-1 text-sm shadow-[var(--shadow)]">
-                    <button type="button" role="menuitem" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition hover:bg-surface-2" @click="s.startHistorySearch()">
-                        <x-ui.icon name="search" class="size-4 text-muted" /><span x-text="s.t('nav.search_chats')"></span>
-                    </button>
-                    <button type="button" role="menuitem" class="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left transition hover:bg-surface-2" @click="s.startSelect()">
-                        <x-ui.icon name="check" class="size-4 text-muted" /><span x-text="s.t('nav.select')"></span>
-                    </button>
-                </div>
+                <button type="button" class="btn-icon size-7" @click="s.startHistorySearch()" x-bind:aria-label="s.t('nav.search_chats')" x-bind:title="s.t('nav.search_chats')" data-shortcut="mod+K"><x-ui.icon name="search" class="size-4" /></button>
             </div>
             <div class="mt-1.5 flex items-center gap-2 rounded-lg border border-line bg-surface-2 px-2.5" x-show="s.historySearching && !s.selectMode" x-cloak>
                 <x-ui.icon name="search" class="size-3.5 shrink-0 text-muted" />
@@ -86,7 +77,7 @@
                     </template>
                     <template x-if="s.renamingId !== c.id">
                         <div class="flex items-center rounded-lg transition hover:bg-surface-2" x-bind:class="(s.selectMode ? s.isSelected(c.id) : s.activeId === c.id) && 'bg-surface-2'">
-                            <button type="button" class="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-sm" @click="s.selectMode ? s.toggleSelect(c.id) : s.openConversation(c.id)" x-bind:aria-current="!s.selectMode && s.activeId === c.id ? 'page' : null" x-bind:role="s.selectMode ? 'checkbox' : null" x-bind:aria-checked="s.selectMode ? s.isSelected(c.id) : null">
+                            <button type="button" class="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left text-sm" @click="s.onConversationClick($event, c)" @mousedown="$event.shiftKey && $event.preventDefault()" @pointerdown="s.conversationPressStart($event, c)" @pointerup="s.conversationPressEnd()" @pointerleave="s.conversationPressEnd()" @pointercancel="s.conversationPressEnd()" x-bind:aria-current="!s.selectMode && s.activeId === c.id ? 'page' : null" x-bind:role="s.selectMode ? 'checkbox' : null" x-bind:aria-checked="s.selectMode ? s.isSelected(c.id) : null">
                                 <span class="flex size-4 shrink-0 items-center justify-center rounded border transition" x-show="s.selectMode" x-bind:class="s.isSelected(c.id) ? 'border-accent bg-accent text-accent-fg' : 'border-line-strong'">
                                     <span class="size-3" x-show="s.isSelected(c.id)" x-html="s.icon('check')"></span>
                                 </span>

@@ -45,6 +45,7 @@
         <div class="rounded-2xl border-2 border-dashed border-accent px-10 py-8 text-center">
             <x-ui.icon name="paperclip" class="mx-auto mb-2 size-6 text-accent" />
             <p class="text-sm font-medium" x-text="s.t('composer.drop')"></p>
+            <p class="mt-1 text-xs text-muted" x-text="s.t('composer.drop_limits', { max: s.fileLimits.max, size: s.fileLimits.mb })"></p>
         </div>
     </div>
 

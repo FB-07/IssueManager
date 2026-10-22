@@ -30,10 +30,7 @@
     </div>
 
     {{-- notices --}}
-    <div class="space-y-2 px-4 sm:px-5" x-show="s.demo || {{ $c }}.missing.length || {{ $c }}.draft.status === 'error'">
-        <p class="flex items-start gap-2 rounded-xl bg-warn-soft px-3.5 py-2.5 text-xs text-warn" x-show="s.demo">
-            <x-ui.icon name="alert" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('card.demo_notice')"></span>
-        </p>
+    <div class="space-y-2 px-4 sm:px-5" x-show="{{ $c }}.missing.length || {{ $c }}.draft.status === 'error'">
 
         <div class="rounded-xl border border-danger/30 bg-danger-soft px-3.5 py-2.5" x-show="{{ $c }}.missing.length" role="alert">
             <p class="flex items-center gap-2 text-xs font-medium text-danger"><x-ui.icon name="alert" class="size-3.5" /><span x-text="s.t('card.missing_title')"></span></p>

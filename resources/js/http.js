@@ -11,7 +11,10 @@ export async function signOutAndReturnToLogin() {
 }
 
 /** Thin fetch wrapper for the Laravel JSON API. Send a FormData as `body` for uploads. */
-export async function http(method, url, body, { keepalive = false } = {}) {
+export async function http(method, url, body, { keepalive = false, silent = false } = {}) {
+    // `silent`: a request the user did not ask for (a background refresh). It must never throw them out to the login page:
+    // if the session or the YouTrack token is no longer good, the next thing they do finds out and handles it.
+    const bail = (status, data) => { throw new ApiError(status, { message: data?.message ?? `HTTP ${status}` }); };
     const headers = { Accept: 'application/json', 'X-CSRF-TOKEN': csrf(), 'X-Requested-With': 'XMLHttpRequest' };
     let payload;
     if (body instanceof FormData) {
@@ -24,6 +27,7 @@ export async function http(method, url, body, { keepalive = false } = {}) {
     const res = await fetch(url, { method, headers, body: payload, credentials: 'same-origin', keepalive });
 
     if (res.status === 401) {
+        if (silent) bail(401);
         window.location.href = '/login';
         throw new ApiError(401, { message: 'Unauthenticated' });
     }
@@ -33,6 +37,7 @@ export async function http(method, url, body, { keepalive = false } = {}) {
 
     const data = res.status === 204 ? null : await res.json().catch(() => null);
     if (!res.ok && data?.reauth) {
+        if (silent) bail(res.status, data);
         await signOutAndReturnToLogin();
         throw new ApiError(401, { message: data.message });
     }

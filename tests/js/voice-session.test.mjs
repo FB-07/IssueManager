@@ -23,7 +23,7 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 globalThis.history = { pushState() {}, replaceState() {} };
 
 // the real store, bundled on the fly (it imports other modules of the app)
-const bundle = await build({ entryPoints: ['resources/js/store.js'], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
+const bundle = await build({ entryPoints: ['resources/js/store/index.js'], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
 const { createStore } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 // Alpine hands out reactive proxies for everything kept in the store, so `store.x !== x` even for the same object.
 // The harness behaves the same way: it caught (too late) code that compared a stored session with the original.

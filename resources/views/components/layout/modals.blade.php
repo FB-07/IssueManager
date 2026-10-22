@@ -1,13 +1,19 @@
 {{-- keyboard shortcuts --}}
 <x-ui.modal open="s.shortcutsOpen" title="shortcuts.title" width="max-w-md">
     <dl class="space-y-2.5 text-sm">
-        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+M', 'mine'], ['alt+A', 'analytics'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
+        @foreach ([['mod+K', 'search_chats'], ['alt+N', 'new_chat'], ['alt+I', 'issues'], ['alt+M', 'mine'], ['alt+A', 'analytics'], ['alt+D', 'draft'], ['alt+B', 'sidebar'], ['shift+click', 'select_chats'], ['/', 'focus'], ['?', 'help'], ['esc', 'close']] as [$keys, $label])
             <div class="flex items-center justify-between gap-4">
                 <dt class="text-muted" x-text="s.t('shortcuts.{{ $label }}')"></dt>
                 <dd class="flex shrink-0 gap-1">
                     @foreach (explode('+', $keys) as $k)
                         <kbd class="min-w-6 rounded-md border border-line bg-surface-2 px-1.5 py-0.5 text-center font-mono text-xs"
-                             x-text="{{ $k === 'mod' ? "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl')" : ($k === 'alt' ? "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⌥' : 'Alt')" : "'".$k."'") }}"></kbd>
+                             x-text="{{ match ($k) {
+                            'mod' => "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl')",
+                            'alt' => "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⌥' : 'Alt')",
+                            'shift' => "(/Mac|iPhone|iPad/.test(navigator.platform) ? '⇧' : 'Shift')",
+                            'click' => "s.t('shortcuts.click')",
+                            default => "'".$k."'",
+                        } }}"></kbd>
                     @endforeach
                 </dd>
             </div>
@@ -43,8 +49,8 @@
                 <span class="block text-xs leading-relaxed text-muted" x-text="s.t('settings.draft_text')"></span></span>
         </label>
         <div class="rounded-xl border border-line bg-surface-2 p-3.5">
-            <p class="flex items-center gap-2 text-sm font-medium"><span class="size-4" x-bind:class="s.demo ? 'text-warn' : 'text-success'" x-html="s.icon(s.demo ? 'alert' : 'check-circle')"></span><span x-text="s.demo ? s.t('settings.demo_title') : s.t('settings.live_title')"></span></p>
-            <p data-no-brand class="mt-1 text-xs leading-relaxed text-muted" x-text="s.demo ? s.t('settings.demo_text') : s.t('settings.live_text')"></p>
+            <p class="flex items-center gap-2 text-sm font-medium"><span class="size-4 text-success" x-html="s.icon('check-circle')"></span><span x-text="s.t('settings.live_title')"></span></p>
+            <p data-no-brand class="mt-1 text-xs leading-relaxed text-muted" x-text="s.t('settings.live_text')"></p>
         </div>
         <div class="flex items-center gap-3 border-t border-line pt-4">
             <span class="flex size-9 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent" x-text="s.user.name.slice(0, 1)"></span>
@@ -57,10 +63,10 @@
     </div>
 </x-ui.modal>
 
-{{-- explicit confirmation of the (simulated) creation --}}
+{{-- explicit confirmation of the creation --}}
 <x-ui.modal open="s.confirmOpen" title="confirm.title">
     <div class="space-y-4" x-show="s.draft">
-        <p class="text-sm text-muted" x-text="s.draft?.issue_key ? s.t(s.demo ? 'confirm.text_update' : 'confirm.text_update_live', { key: s.draft.issue_key }) : s.t(s.demo ? 'confirm.text' : 'confirm.text_live')"></p>
+        <p class="text-sm text-muted" x-text="s.draft?.issue_key ? s.t('confirm.text_update_live', { key: s.draft.issue_key }) : s.t('confirm.text_live')"></p>
         <dl class="grid gap-x-4 gap-y-2 rounded-xl border border-line bg-surface-2 p-3.5 text-sm sm:grid-cols-[auto_1fr]">
             <template x-for="f in ['summary', 'project', 'type', 'priority']" x-bind:key="f">
                 <div class="contents"><dt class="text-muted" x-text="s.t('fields.' + f)"></dt><dd class="break-words font-medium" x-text="f === 'type' || f === 'priority' ? s.lbl(f, s.draft?.[f]) : s.draft?.[f]"></dd></div>
@@ -91,12 +97,7 @@
                 <span x-text="s.t('similar.ack')"></span>
             </label>
         </div>
-        <p class="flex items-start gap-2 rounded-lg bg-warn-soft px-3 py-2 text-xs text-warn" x-show="s.demo"><x-ui.icon name="alert" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('confirm.demo_warning')"></span></p>
-        <p class="flex items-start gap-2 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent" x-show="!s.demo"><x-ui.icon name="check-circle" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('confirm.live_warning')"></span></p>
-        <label class="flex cursor-pointer items-center gap-2.5 text-sm" x-show="s.demo">
-            <input type="checkbox" class="size-4 accent-[var(--accent)]" x-model="s.simulateError">
-            <span x-text="s.t('confirm.simulate_error')"></span>
-        </label>
+        <p class="flex items-start gap-2 rounded-lg bg-accent-soft px-3 py-2 text-xs text-accent"><x-ui.icon name="check-circle" class="mt-px size-3.5 shrink-0" /><span x-text="s.t('confirm.live_warning')"></span></p>
         <div class="flex justify-end gap-2">
             <button type="button" class="btn" @click="s.confirmOpen = false" x-text="s.t('common.cancel')"></button>
             <button type="button" class="btn btn-primary" @click="s.confirmCreate()" x-bind:disabled="s.duplicates.length > 0 && !s.dupAck"

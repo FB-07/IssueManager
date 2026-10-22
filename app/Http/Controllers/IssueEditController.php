@@ -70,7 +70,7 @@ class IssueEditController extends Controller
             'kind' => 'creation-result',
             'body' => null,
             'meta' => [
-                'key' => $issue['id'], 'url' => $issue['url'], 'demo' => false, 'updated' => true, 'direct' => true,
+                'key' => $issue['id'], 'url' => $issue['url'], 'updated' => true, 'direct' => true,
                 'summary' => $issue['summary'],
                 'changes' => array_keys($patch ?? []),
                 'attachments' => $files['sent'],

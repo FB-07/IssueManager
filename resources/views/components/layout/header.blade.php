@@ -5,8 +5,7 @@
 
     <h1 class="min-w-0 flex-1 truncate text-sm font-medium" x-text="s.title"></h1>
 
-    <span class="badge hidden bg-warn-soft text-warn sm:inline-flex" x-show="s.demo" x-text="s.t('app.demo_badge')"></span>
-    <span class="badge hidden bg-success-soft text-success sm:inline-flex" x-show="!s.demo" x-text="s.t('app.live_badge')"></span>
+    <span class="badge hidden bg-success-soft text-success sm:inline-flex" x-text="s.t('app.live_badge')"></span>
 
     {{-- language --}}
     <div class="flex rounded-lg border border-line p-0.5" role="group" x-bind:aria-label="s.t('settings.language')">

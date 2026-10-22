@@ -7,6 +7,7 @@ use App\Http\Controllers\BatchController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ConversationController;
 use App\Http\Controllers\DraftController;
+use App\Http\Controllers\IssueCommentController;
 use App\Http\Controllers\IssueEditController;
 use App\Http\Controllers\PreferenceController;
 use App\Http\Controllers\TurnController;
@@ -46,6 +47,7 @@ Route::middleware('auth')->group(function () {
         Route::patch('/conversations/{conversation}/messages/{message}/batch', [BatchController::class, 'save'])->whereNumber(['conversation', 'message'])->middleware('throttle:120,1');
         Route::get('/conversations/{conversation}/messages/{message}/batch/{index}/similar', [BatchController::class, 'similar'])->whereNumber(['conversation', 'message', 'index'])->middleware('throttle:60,1');
         Route::post('/conversations/{conversation}/issues/update', IssueEditController::class)->whereNumber('conversation');
+        Route::post('/conversations/{conversation}/issues/comment', IssueCommentController::class)->whereNumber('conversation');
         Route::get('/conversations/{conversation}/draft/similar', [DraftController::class, 'similar'])->whereNumber('conversation')->middleware('throttle:60,1');
         Route::post('/conversations/{conversation}/draft/create', [DraftController::class, 'create'])->whereNumber('conversation');
 

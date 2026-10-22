@@ -330,6 +330,31 @@ class YouTrackClient
         return ['id' => $created['idReadable'], 'url' => config('services.youtrack.url').'/issue/'.$created['idReadable']];
     }
 
+    /** Adds a comment to an issue (as the signed-in user). */
+    public function addComment(string $id, string $text): array
+    {
+        $comment = $this->send('post', "/api/issues/$id/comments", ['fields' => 'id,created'], ['text' => $text]);
+
+        return ['id' => $comment['id'] ?? null, 'url' => config('services.youtrack.url').'/issue/'.$id];
+    }
+
+    /** The comments of an issue, oldest first: id, text, author (login and name) and date. */
+    public function comments(string $id): array
+    {
+        $rows = $this->get("/api/issues/$id/comments", ['fields' => 'id,text,created,author(login,fullName)', '$top' => 100]);
+
+        return array_map(fn ($c) => [
+            'id' => $c['id'], 'text' => (string) ($c['text'] ?? ''), 'author' => $c['author']['fullName'] ?? $c['author']['login'] ?? null,
+            'author_login' => $c['author']['login'] ?? null, 'created' => isset($c['created']) ? date('Y-m-d H:i', (int) ($c['created'] / 1000)) : null,
+        ], $rows);
+    }
+
+    /** Rewrites the text of an existing comment of an issue. */
+    public function editComment(string $id, string $commentId, string $text): void
+    {
+        $this->send('post', "/api/issues/$id/comments/$commentId", ['fields' => 'id'], ['text' => $text]);
+    }
+
     public function update(string $id, array $patch): array
     {
         $body = array_filter([

@@ -335,3 +335,47 @@ it('starts a fresh draft when the model asks for another issue, and leaves the c
     expect($r->json('draft.summary'))->toBe('Segundo')->and($r->json('draft.issue_key'))->toBeNull()->and($r->json('draft.status'))->toBe('draft');
     expect(IssueDraft::where('conversation_id', $id)->count())->toBe(1);
 });
+
+it('posts a comment the user asked for on an existing issue and records it in the conversation', function () {
+    fake_yt_for_edit();
+    Http::fake(['yt.test/api/issues/DEV-7/comments*' => Http::response(['id' => '4-1', 'created' => 1])]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+
+    $res = call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => '  Já foi testado.  '])->assertOk()
+        ->assertJsonPath('message.kind', 'creation-result')->assertJsonPath('message.meta.commented', true)->assertJsonPath('message.meta.key', 'DEV-7')
+        ->assertJsonPath('message.meta.comment', 'Já foi testado.');
+    expect($res->json('conversation.id'))->toBe($id);
+    Http::assertSent(fn ($r) => $r->method() === 'POST' && str_contains($r->url(), '/api/issues/DEV-7/comments') && $r['text'] === 'Já foi testado.');
+
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => '   '])->assertStatus(422);
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => '../../etc', 'text' => 'x'])->assertStatus(422);
+    call_as($this->b, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'x'])->assertNotFound();
+});
+
+it('edits a comment the app posted, in place, and refuses one it did not post', function () {
+    fake_yt_for_edit();
+    Http::fake(['yt.test/api/issues/DEV-7/comments*' => Http::response(['id' => '4-1', 'created' => 1])]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    $card = call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'Versão 1'])->assertOk()
+        ->assertJsonPath('message.meta.comment_id', '4-1');
+
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'Versão 2', 'comment_id' => '4-1', 'in_place' => true])->assertOk()
+        ->assertJsonPath('message.id', $card->json('message.id'))->assertJsonPath('message.meta.comment', 'Versão 2')->assertJsonPath('message.meta.edited', true);
+    Http::assertSent(fn ($r) => str_contains($r->url(), '/api/issues/DEV-7/comments/4-1') && $r['text'] === 'Versão 2');
+
+    Http::swap(new \Illuminate\Http\Client\Factory);
+    fake_yt_for_edit();
+    Http::fake(['yt.test/api/issues/DEV-7/comments*' => Http::response([]), 'yt.test/api/users/me*' => Http::response(['login' => 'me'])]);
+    call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'x', 'comment_id' => '9-9'])->assertNotFound();
+});
+
+it('gives a comment edited from the chat a card of its own and keeps the old card in sync', function () {
+    fake_yt_for_edit();
+    Http::fake(['yt.test/api/issues/DEV-7/comments*' => Http::response(['id' => '4-1', 'created' => 1])]);
+    $id = call_as($this->a, 'POST', '/api/conversations')->json('id');
+    $card = call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'Versão 1'])->assertOk();
+
+    $res = call_as($this->a, 'POST', "/api/conversations/$id/issues/comment", ['issue_id' => 'DEV-7', 'text' => 'Versão 2', 'comment_id' => '4-1'])->assertOk()
+        ->assertJsonPath('message.meta.edited', true)->assertJsonPath('original.id', $card->json('message.id'))->assertJsonPath('original.meta.comment', 'Versão 2');
+    expect($res->json('message.id'))->not->toBe($card->json('message.id'));
+});

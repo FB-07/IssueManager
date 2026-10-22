@@ -26,7 +26,7 @@ const memory = {};
 globalThis.localStorage = { getItem: (k) => memory[k] ?? null, setItem: (k, v) => { memory[k] = String(v); }, removeItem: (k) => { delete memory[k]; } };
 globalThis.history = { pushState() {}, replaceState() {} };
 
-const bundle = await build({ entryPoints: ['resources/js/store.js'], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
+const bundle = await build({ entryPoints: ['resources/js/store/index.js'], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
 const { createStore } = await import('data:text/javascript;base64,' + Buffer.from(bundle.outputFiles[0].text).toString('base64'));
 
 // Alpine hands out reactive proxies for what the store keeps; behave the same
@@ -392,4 +392,74 @@ test('the created/resolved columns are capped at 24px, start from one baseline a
   assert.deepEqual(s.analyticsBars.bars, []); assert.equal(s.analyticsBacklog.end, null);
   assert.equal(s.barMax([{ count: 3 }, { count: 9 }]), 9); assert.equal(s.barMax([]), 1);
   void widths;
+});
+
+// ---- a long conversation, the lists that refresh by themselves, selecting conversations ----------------------------------------
+test('a conversation gets the "too long" notice at 30 messages or about 60k characters, once closed it stays closed for that conversation', () => {
+  const s = mk(); s.page = 'chat'; s.activeId = 5;
+  const msg = (n, body = 'x') => Array.from({ length: n }, (_, i) => ({ id: i, body }));
+  s.messages = msg(29); assert.equal(s.conversationLong, false);
+  s.messages = msg(30); assert.equal(s.conversationLong, true);
+  s.messages = msg(3, 'y'.repeat(25000)); assert.equal(s.conversationLong, true, 'a few huge messages count too');
+  s.dismissLong(); assert.equal(s.conversationLong, false);
+  s.activeId = 6; assert.equal(s.conversationLong, true, 'another conversation has its own notice');
+  s.page = 'mine'; assert.equal(s.conversationLong, false, 'only in the chat');
+});
+test('the open list refreshes itself, silently, and leaves alone an issue being edited or ticked', async () => {
+  const s = mk(); const asked = [];
+  s.searchMine = (page, quiet) => asked.push(['mine', page, quiet]);
+  s.searchIssues = (page, quiet) => asked.push(['all', page, quiet]);
+  on('GET', '/api/youtrack/mine/summary', { json: { assigned_open: 1, assigned_resolved: 2, created: 3 } });
+  s.page = 'mine'; s.minePage = 3; s.autoRefresh(); await wait(20);
+  assert.deepEqual(asked, [['mine', 3, true]]); assert.equal(s.mineSummary.created, 3);
+  s.page = 'all'; s.issuePage = 2; s.autoRefresh();
+  assert.deepEqual(asked.at(-1), ['all', 2, true]);
+  const n = asked.length;
+  s.mineSelectMode = true; s.page = 'mine'; s.autoRefresh();
+  s.mineSelectMode = false; s.issueEdit = { id: 'DEV-1' }; s.autoRefresh();
+  s.issueEdit = null; s.page = 'chat'; s.autoRefresh();
+  assert.equal(asked.length, n, 'nothing while selecting, editing or in the chat');
+});
+test('Shift+click on a conversation starts the selection (and ticks it); a plain click opens it; a long press on touch selects too', async () => {
+  const s = mk(); const opened = [];
+  s.openConversation = (id) => opened.push(id);
+  s.onConversationClick({ shiftKey: false }, { id: 1 });
+  assert.deepEqual(opened, [1]); assert.equal(s.selectMode, false);
+  s.onConversationClick({ shiftKey: true }, { id: 2 });
+  assert.equal(s.selectMode, true); assert.deepEqual(s.selectedIds, [2]);
+  s.onConversationClick({ shiftKey: false }, { id: 3 });
+  assert.deepEqual(s.selectedIds, [2, 3]); assert.deepEqual(opened, [1], 'in selection mode a click ticks instead of opening');
+  s.cancelSelect();
+  s.conversationPressStart({ pointerType: 'touch' }, { id: 4 }); await wait(560);
+  assert.equal(s.selectMode, true); assert.deepEqual(s.selectedIds, [4]);
+  s.onConversationClick({ shiftKey: false }, { id: 4 });
+  assert.deepEqual(s.selectedIds, [4], 'the click that ends the long press does not tick it again');
+});
+
+test('a comment asked for in the chat is posted through the app and its card is added to the conversation', async () => {
+  const s = mk(); s.activeId = 9; s.t = (k) => k; s.scrollBottom = () => {};
+  on('POST', '/api/conversations/9/issues/comment', { json: { message: { id: 77, kind: 'creation-result', meta: { key: 'DEV-51', commented: true, comment: 'ok' } }, conversation: { id: 9, title: 't' } } });
+  const during = [];
+  const p = s.applyIssueComment({ issue_id: 'DEV-51', text: 'ok', message: 'x' });
+  during.push(s.creating, s.creatingText);
+  await p;
+  assert.deepEqual(during, [true, 'chat.commenting']);
+  assert.equal(s.creating, false); assert.equal(s.messages.at(-1).id, 77);
+  assert.deepEqual(calls.at(-1).body, { issue_id: 'DEV-51', text: 'ok' });
+});
+
+test('what the app did (a comment posted, an issue created or changed) goes into the history the model gets, so it cannot deny it', () => {
+  const s = mk(); s.t = (k) => k;
+  s.messages = [
+    { id: 1, role: 'user', kind: 'text', body: 'poe comentario "bom dia"', meta: { contexts: [{ key: 'DEV-54', summary: 'x' }] } },
+    { id: 2, role: 'assistant', kind: 'text', body: 'Vou adicionar o comentário ao DEV-54.' },
+    { id: 3, role: 'assistant', kind: 'creation-result', body: null, meta: { key: 'DEV-54', commented: true, updated: true, comment: 'bom dia' } },
+    { id: 4, role: 'user', kind: 'text', body: 'e criaste?' },
+    { id: 5, role: 'assistant', kind: 'creation-result', body: null, meta: { key: 'DEV-9', summary: 'Botão falha' } },
+    { id: 6, role: 'assistant', kind: 'creation-result', body: null, meta: { key: 'DEV-9', updated: true, changes: ['state'] } },
+  ];
+  const h = s.historyForApi();
+  assert.deepEqual(h.map((m) => m.role), ['user', 'assistant', 'user', 'assistant'], 'the answer and the notes about what the app did are one assistant turn');
+  assert.match(h[1].content, /Vou adicionar o comentário ao DEV-54\.\n\n\[App: the comment was posted on issue DEV-54: "bom dia"\]/);
+  assert.match(h[3].content, /issue DEV-9 was created in YouTrack: "Botão falha"\]\n\n\[App: issue DEV-9 was updated in YouTrack \(state\)\]/);
 });

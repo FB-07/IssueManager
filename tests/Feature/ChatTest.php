@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Models\Message;
+use Illuminate\Http\Client\Factory;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -51,12 +52,12 @@ it('streams text and the draft tool call as SSE and sends the tool only when ena
 
     Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && $r->header('x-api-key')[0] === 'test-key'
         && $r['stream'] === true
-        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'count_issues', 'get_issue']
+        && collect($r['tools'])->pluck('name')->all() === ['update_issue_draft', 'suggest_replies', 'update_issue', 'comment_issue', 'propose_issues', 'find_issues', 'count_issues', 'get_issue', 'list_comments']
         && str_contains($r['system'], 'NO suggestions'));
 
     Http::fake(['api.anthropic.com/*' => Http::response(sse([]), 200)]);
     $this->post('/api/chat', chatPayload(['draft_enabled' => false]))->streamedContent();
-    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'propose_issues', 'find_issues', 'count_issues', 'get_issue'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'anthropic') && collect($r['tools'])->pluck('name')->all() === ['create_issue', 'suggest_replies', 'update_issue', 'comment_issue', 'propose_issues', 'find_issues', 'count_issues', 'get_issue', 'list_comments'] && ! str_contains($r['system'], 'update_issue_draft') && str_contains($r['system'], 'explicitly asks'));
 });
 
 it('sends images as base64 blocks and never leaks the key on API errors', function () {
@@ -524,4 +525,29 @@ it('never applies an update for an issue it was not allowed, even if the model i
     $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => 'fecha o issue']]]))->streamedContent();
 
     expect($out)->not->toContain('event: update')->not->toContain('DEV-99');
+});
+
+function commentIssueRound(string $key): string
+{
+    return sse([
+        ['type' => 'content_block_start', 'index' => 1, 'content_block' => ['type' => 'tool_use', 'id' => 'tu_c', 'name' => 'comment_issue']],
+        ['type' => 'content_block_delta', 'index' => 1, 'delta' => ['type' => 'input_json_delta', 'partial_json' => json_encode(['issue_id' => $key, 'text' => 'Já foi testado em produção.', 'message' => 'A comentar no '.$key.'.'])]],
+        ['type' => 'content_block_stop', 'index' => 1],
+        ['type' => 'message_delta', 'delta' => ['stop_reason' => 'tool_use']],
+    ]);
+}
+
+it('forwards a comment on an issue the user pointed at, and refuses one on an issue they did not', function () {
+    config(['services.anthropic.key' => 'test-key']);
+    Http::fake(['api.anthropic.com/*' => Http::response(commentIssueRound('DEV-7'), 200)]);
+
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => 'comenta no dev-7 que já foi testado']]]))->streamedContent();
+    expect($out)->toContain('event: comment')->toContain('"issue_id":"DEV-7"')->toContain('Já foi testado em produção.')->not->toContain('event: error');
+
+    Http::swap(new Factory); // drop the first stub: the first matching one wins
+    Http::fake(['api.anthropic.com/*' => Http::sequence()
+        ->push(commentIssueRound('DEV-9'), 200)
+        ->push(sse([...textBlock('Em que issue queres comentar?'), ['type' => 'message_delta', 'delta' => ['stop_reason' => 'end_turn']]]), 200)]);
+    $out = $this->post('/api/chat', chatPayload(['draft_enabled' => false, 'messages' => [['role' => 'user', 'content' => 'comenta que já foi testado']]]))->streamedContent();
+    expect($out)->not->toContain('event: comment')->toContain('Em que issue queres comentar?');
 });

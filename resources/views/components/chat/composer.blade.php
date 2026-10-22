@@ -8,6 +8,14 @@
             <button type="button" class="btn-icon size-6" @click="s.dismissMentioned()" x-bind:aria-label="s.t('common.close')"><x-ui.icon name="x" class="size-3" /></button>
         </div>
 
+        {{-- a long conversation: each message costs more and the answers get worse --}}
+        <div x-show="s.conversationLong" x-cloak class="anim-rise mb-2 flex items-center gap-2 rounded-xl border border-warn/30 bg-warn-soft px-3 py-2 text-xs text-warn" role="status">
+            <x-ui.icon name="alert" class="size-3.5 shrink-0" />
+            <span class="min-w-0 flex-1" x-text="s.t('chat.long_notice')"></span>
+            <button type="button" class="shrink-0 rounded-md border border-warn/40 px-2 py-1 font-medium transition hover:bg-warn/10" @click="s.newChat()" x-text="s.t('chat.long_new')"></button>
+            <button type="button" class="btn-icon size-6" @click="s.dismissLong()" x-bind:aria-label="s.t('common.close')"><x-ui.icon name="x" class="size-3" /></button>
+        </div>
+
         {{-- quick search for an issue to attach to the message: by key (DEV-12) or by words, with the recent ones before typing --}}
         <div x-show="s.contextPicker.open" x-cloak @click.outside="s.closeContextPicker()" @keydown.escape.window="s.closeContextPicker()"
              class="anim-rise absolute bottom-full left-0 z-30 mb-2 w-full max-w-lg overflow-hidden rounded-2xl border border-line bg-surface shadow-[var(--shadow)]" role="dialog" x-bind:aria-label="s.t('context.pick_hint')">

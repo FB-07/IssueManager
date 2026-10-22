@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'app' => ['live_badge' => 'YouTrack ligado', 'name' => 'IssueManager', 'demo_badge' => 'YouTrack simulado'],
+    'app' => ['live_badge' => 'YouTrack ligado', 'name' => 'IssueManager'],
 
     'login' => [
         'domain_only' => 'A conta :email não pode entrar: só são aceites contas @:domain.',
@@ -27,6 +27,7 @@ return [
         'issues' => 'Issues existentes',
         'draft' => 'Ligar/desligar rascunho de Issue',
         'sidebar' => 'Recolher/expandir barra lateral',
+        'select_chats' => 'Selecionar conversas (apagar várias)', 'click' => 'clique',
         'focus' => 'Escrever mensagem',
         'help' => 'Mostrar atalhos',
         'close' => 'Fechar',
@@ -88,7 +89,7 @@ return [
     'nav' => [
         'analytics' => 'Análise',
         'mine' => 'Os meus issues',
-        'options' => 'Opções', 'search_chats' => 'Pesquisar conversas', 'search_placeholder' => 'Pesquisar por título…', 'no_matches' => 'Nenhuma conversa encontrada.',
+        'search_chats' => 'Pesquisar conversas', 'search_placeholder' => 'Pesquisar por título…', 'no_matches' => 'Nenhuma conversa encontrada.',
         'select' => 'Selecionar', 'select_all' => 'Selecionar tudo', 'selected' => 'Selecionadas: :n',
         'delete_selected' => 'Apagar :n', 'delete_confirm' => 'Apagar as conversas selecionadas (:n)? Não é possível desfazer.', 'deleted' => 'Conversas apagadas: :n.',
         'group_today' => 'Hoje', 'group_yesterday' => 'Ontem', 'group_week' => 'Últimos 7 dias', 'group_older' => 'Mais antigas',
@@ -133,6 +134,7 @@ return [
         'send' => 'Enviar',
         'hint' => 'Enter envia · Shift+Enter nova linha',
         'disclaimer' => 'Respostas geradas pelo Claude, que pode errar. Confirma sempre o rascunho antes de criar o Issue.',
+        'drop_limits' => 'Até :max ficheiros, :size MB cada',
         'drop' => 'Larga os ficheiros para anexar',
         'remove_attachment' => 'Remover anexo :name',
     ],
@@ -142,7 +144,7 @@ return [
         'duplicate_held' => 'Antes de criar: já existe um issue que parece duplicado. Revê o rascunho abaixo; nada foi criado.',
         'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
-        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'jump_bottom' => 'Ir para o fim', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
+        'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'jump_bottom' => 'Ir para o fim', 'long_notice' => 'Esta conversa já é longa: cada mensagem custa mais e o Claude pode perder o fio. Uma conversa nova costuma dar melhores respostas.', 'long_new' => 'Nova conversa', 'commenting' => 'A comentar no YouTrack…', 'commenting_issue' => 'A adicionar o comentário ao Issue.', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
     'fields' => [
         'state' => 'Estado',
@@ -175,9 +177,8 @@ return [
         'status' => ['draft' => 'Rascunho', 'error' => 'Erro'],
         'tab_edit' => 'Editar',
         'tab_preview' => 'Pré-visualizar',
-        'demo_notice' => 'Simulação: este Issue não será criado no YouTrack.',
         'missing_title' => 'Campos obrigatórios em falta:',
-        'error_title' => 'A criação simulada falhou',
+        'error_title' => 'A criação no YouTrack falhou',
         'error_kept' => 'Os teus dados foram mantidos. Podes tentar novamente.',
         'retry' => 'Tentar novamente',
         'choose' => 'Selecionar…',
@@ -203,10 +204,6 @@ return [
         'text_update_live' => 'Vais guardar as alterações no Issue :key do YouTrack.',
         'live_warning' => 'Atenção: isto cria um Issue real no YouTrack.',
         'title' => 'Confirmar criação',
-        'text' => 'Vais criar este Issue (simulação). Confirma que os dados estão corretos.',
-        'text_update' => 'Vais guardar as alterações no Issue :key (simulação).',
-        'demo_warning' => 'Modo demonstração: nada será criado nem alterado no YouTrack.',
-        'simulate_error' => 'Simular um erro nesta tentativa',
         'confirm' => 'Confirmar',
     ],
 
@@ -237,15 +234,11 @@ return [
         'attachments' => 'Anexos enviados', 'attachments_failed' => 'Não foi possível anexar: :names',
         'changes' => 'Alterado',
         'preview' => 'Pré-visualização',
+        'commented' => 'Comentário adicionado ao Issue', 'comment' => 'Comentário', 'comment_edited' => 'Comentário editado no Issue', 'edit_comment' => 'Editar', 'save_comment' => 'Guardar', 'cancel' => 'Cancelar', 'edited' => 'editado',
         'created_live' => 'Issue criado no YouTrack', 'updated_live' => 'Issue atualizado no YouTrack',
-        'created' => 'Issue criado (simulação)',
-        'updated' => 'Issue atualizado (simulação)',
-        'demo_badge' => 'Demonstração',
         'id' => 'Identificador',
         'link' => 'Link',
-        'link_demo' => 'Link demonstrativo — não funcional',
         'summary' => 'Resumo',
-        'demo_note' => 'Este identificador é fictício. Nenhum Issue real foi criado no YouTrack.',
     ],
 
     'issues' => [
@@ -259,7 +252,6 @@ return [
         'search_btn' => 'Pesquisar',
         'none' => 'Nenhum Issue encontrado.',
         'saved' => 'Issue atualizado.',
-        'saved_demo' => 'Alterações guardadas (simulação).',
     ],
 
     'settings' => [
@@ -272,8 +264,6 @@ return [
         'language' => 'Idioma da interface',
         'lang_pt' => 'Português', 'lang_en' => 'English',
         'language_hint' => 'Não afeta o idioma em que escreves as mensagens.',
-        'demo_title' => 'YouTrack simulado',
-        'demo_text' => 'As conversas são geradas pelo Claude, mas o YouTrack não é contactado: nenhum Issue real é criado. Os dados desta sessão não são guardados.',
         'logout' => 'Terminar sessão',
     ],
 
@@ -282,6 +272,8 @@ return [
         'message_too_long' => 'A mensagem é demasiado longa (máximo :max caracteres).',
         'voice_network' => 'O ditado por voz precisa de ligação à internet (o browser envia o áudio ao serviço de reconhecimento). Verifica a ligação e tenta de novo.', 'voice_unsupported' => 'Este browser não suporta ditado por voz. Usa o Chrome, o Edge ou o Safari.', 'voice_denied' => 'O browser não tem permissão para usar o microfone. Autoriza-o nas definições do site.', 'voice_no_mic' => 'Não foi encontrado nenhum microfone.', 'voice_failed' => 'Não foi possível usar o ditado por voz. Tenta novamente.',
         'nothing_to_change' => 'Não encontrei nada válido para alterar no Issue.',
+        'comment_not_found' => 'Esse comentário não foi encontrado nesta conversa.',
+        'comment_not_yours' => 'Esse comentário não é teu, por isso não pode ser editado.',
         'unknown_project' => 'Projeto desconhecido: :project',
         'tracker_unreachable' => 'Não foi possível contactar o YouTrack.',
         'tracker_auth' => 'O YouTrack recusou o token (sem permissões ou expirado).',

@@ -8,7 +8,7 @@ const csrf = () => document.querySelector('meta[name="csrf-token"]')?.content ??
  */
 export async function streamChat({ payload, files = [], signal }, { onText }) {
     // Stopped by the user (the signal was aborted with the reason 'stop'): what has arrived so far is the result, nothing more
-    const stopped = () => ({ patch: null, created: null, updated: null, replies: null, batch: null, stopped: true });
+    const stopped = () => ({ patch: null, created: null, updated: null, commented: null, replies: null, batch: null, stopped: true });
     try {
         return await run({ payload, files, signal }, { onText });
     } catch (e) {
@@ -41,6 +41,7 @@ async function run({ payload, files, signal }, { onText }) {
     let patch = null;
     let created = null;
     let updated = null;
+    let commented = null;
     let replies = null;
     let batch = null;
 
@@ -57,6 +58,7 @@ async function run({ payload, files, signal }, { onText }) {
         else if (event === 'draft') patch = json.patch;
         else if (event === 'create') created = json.issue;
         else if (event === 'update') updated = json.issue;
+        else if (event === 'comment') commented = json.issue;
         else if (event === 'batch') batch = json;
         else if (event === 'replies') replies = json.replies;
         else if (event === 'error') throw new ApiError(502, { message: json.message });
@@ -73,5 +75,5 @@ async function run({ payload, files, signal }, { onText }) {
         }
     }
 
-    return { patch, created, updated, replies, batch };
+    return { patch, created, updated, commented, replies, batch };
 }

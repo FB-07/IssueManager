@@ -48,7 +48,7 @@ class Presenter
             'custom_fields' => (object) ($d->custom_fields ?? []),
             'suggestions' => (object) [],
             'status' => $d->status, 'issue_key' => $d->issue_key, 'issue_url' => $d->issue_url,
-            'is_demo' => false, 'error_message' => $d->error_message, 'revision' => $d->revision,
+            'error_message' => $d->error_message, 'revision' => $d->revision,
             'missing' => $d->missingFields(),
         ];
     }

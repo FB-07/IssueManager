@@ -135,7 +135,7 @@ class DraftController extends Controller
         $message = $conv->messages()->create([
             'role' => 'assistant', 'kind' => 'creation-result', 'body' => null,
             'meta' => [
-                'key' => $result['id'], 'url' => $result['url'], 'demo' => false, 'updated' => $isUpdate, 'summary' => $result['summary'],
+                'key' => $result['id'], 'url' => $result['url'], 'updated' => $isUpdate, 'summary' => $result['summary'],
                 'direct' => $request->boolean('direct'),
                 'attachments' => $files['sent'],
                 'attachments_failed' => $files['failed'],

@@ -57,3 +57,22 @@ test('stopping keeps what has arrived and ends without an error; a timeout still
   late.abort(new DOMException('timed out', 'TimeoutError'));
   await assert.rejects(p2, (e) => e.name === 'TimeoutError');
 });
+
+test('a background request never throws the user out to the login page; one they asked for still does', async () => {
+  const bundle2 = await build({ entryPoints: ['resources/js/http.js'], bundle: true, format: 'esm', platform: 'node', write: false, logLevel: 'silent' });
+  const { http } = await import('data:text/javascript;base64,' + Buffer.from(bundle2.outputFiles[0].text).toString('base64'));
+  globalThis.window = { location: { href: '/issues' } };
+  const reply = (status, json) => async () => ({ status, ok: status < 400, json: async () => json });
+
+  globalThis.fetch = reply(401, {});
+  await assert.rejects(http('GET', '/api/x', undefined, { silent: true }), (e) => e.status === 401);
+  assert.equal(window.location.href, '/issues', 'silent: it stays where it is');
+
+  globalThis.fetch = reply(502, { reauth: true, message: 'token' });
+  await assert.rejects(http('GET', '/api/x', undefined, { silent: true }), (e) => e.status === 502);
+  assert.equal(window.location.href, '/issues');
+
+  globalThis.fetch = reply(401, {});
+  await assert.rejects(http('GET', '/api/x'), (e) => e.status === 401);
+  assert.equal(window.location.href, '/login', 'a request the user made does send them to the login page');
+});

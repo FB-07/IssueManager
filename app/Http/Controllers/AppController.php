@@ -25,7 +25,6 @@ class AppController extends Controller
             'locales' => $locales,
             'i18n' => collect($locales)->mapWithKeys(fn ($l) => [$l => $loader->load($l, 'ui')]),
             'icons' => config('icons'),
-            'demo' => false,
             'trackerUrl' => config('services.youtrack.url'),
             'configured' => YouTrackClient::configured(),
             'page' => match ($request->route()?->getName()) {

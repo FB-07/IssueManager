@@ -39,6 +39,9 @@
                     x-bind:aria-label="s.mineSelectMode ? s.t('common.cancel') : s.t('nav.select')" x-bind:title="s.mineSelectMode ? s.t('common.cancel') : s.t('nav.select')">
                 <x-ui.icon name="pointer" class="size-[18px]" />
             </button>
+            <button type="button" class="btn-icon size-9 border border-line" @click="s.refreshList()" x-bind:disabled="s.mineLoading" x-bind:aria-label="s.t('analytics.refresh')" x-bind:title="s.t('analytics.refresh')">
+                <span class="size-[18px]" x-bind:class="s.mineLoading && 'anim-spin'" x-html="s.icon('refresh')"></span>
+            </button>
         </div>
 
         {{-- filters (the same ones as the list of existing issues) --}}

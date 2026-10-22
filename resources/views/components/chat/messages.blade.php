@@ -80,12 +80,12 @@
     </template>
 
     {{-- waiting for the answer: three dots, in the place where it will appear --}}
-    <div x-show="(s.processing && !s.streaming) || s.creating" x-transition.opacity class="flex gap-3" role="status" x-bind:aria-label="s.creating ? s.t(s.creatingKind === 'update' ? 'chat.updating' : 'chat.creating') : s.t('chat.processing')">
+    <div x-show="(s.processing && !s.streaming) || s.creating" x-transition.opacity class="flex gap-3" role="status" x-bind:aria-label="s.creating ? s.creatingText : s.t('chat.processing')">
         <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><x-ui.icon name="logo" class="size-4" /></span>
         <div class="flex items-center gap-2.5 py-2 text-sm text-muted">
             <span class="flex gap-1.5"><i class="dot size-2 rounded-full bg-muted"></i><i class="dot size-2 rounded-full bg-muted"></i><i class="dot size-2 rounded-full bg-muted"></i></span>
             {{-- only creating/updating an issue says what is going on; thinking is just the dots --}}
-            <span x-show="s.creating" x-text="s.creating ? s.t(s.creatingKind === 'update' ? 'chat.updating' : 'chat.creating') : ''"></span>
+            <span x-show="s.creating" x-text="s.creating ? s.creatingText : ''"></span>
             <span x-show="s.processing" class="text-xs tabular-nums text-faint" x-text="s.t('chat.preparing', { time: s.elapsedLabel() })"></span>
         </div>
     </div>

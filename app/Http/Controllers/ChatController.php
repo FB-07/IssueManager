@@ -88,10 +88,12 @@ class ChatController extends Controller
             $draftOn ? ClaudePrompt::draftTool() : ClaudePrompt::createTool(),
             ClaudePrompt::suggestRepliesTool(),
             $yt ? ClaudePrompt::updateIssueTool() : null,
+            $yt ? ClaudePrompt::commentIssueTool() : null,
             $yt ? ClaudePrompt::proposeIssuesTool() : null,
             $yt ? ClaudePrompt::findIssuesTool() : null,
             $yt ? ClaudePrompt::countIssuesTool() : null,
             $yt ? ClaudePrompt::getIssueTool() : null,
+            $yt ? ClaudePrompt::listCommentsTool() : null,
         ]));
 
         return new StreamedResponse(fn () => $this->relay($cfg, $body, $yt, $this->changeableIssues($payload), (string) (end($payload['messages'])['content'] ?? '')), 200, [
@@ -271,12 +273,14 @@ class ChatController extends Controller
                 // A change to an issue is only applied for an issue the user pointed at (attached, named, or found by a search in
                 // this turn). Anything else is the model assuming an issue from earlier in the chat: refused, so it has to ask.
                 $refused = [];
-                foreach ($result['updates'] as $u) {
-                    $key = strtoupper(trim((string) ($u['issue_id'] ?? '')));
-                    if ($key !== '' && in_array($key, $allowed, true)) {
-                        $emit('update', ['issue' => $u]);
-                    } else {
-                        $refused[$key] = true;
+                foreach (['update' => $result['updates'], 'comment' => $result['comments']] as $event => $items) {
+                    foreach ($items as $u) {
+                        $key = strtoupper(trim((string) ($u['issue_id'] ?? '')));
+                        if ($key !== '' && in_array($key, $allowed, true)) {
+                            $emit($event, ['issue' => $u]);
+                        } else {
+                            $refused[$key] = true;
+                        }
                     }
                 }
                 $continues = $result['stop'] === 'tool_use' && ($lookups || $refused) && $yt && $round < 7;
@@ -298,7 +302,7 @@ class ChatController extends Controller
                 $answers = [];
                 foreach ($result['blocks'] as $b) {
                     if ($b['type'] === 'tool_use') {
-                        $isRefused = $b['name'] === 'update_issue' && isset($refused[strtoupper(trim((string) (((array) $b['input'])['issue_id'] ?? '')))]);
+                        $isRefused = in_array($b['name'], ['update_issue', 'comment_issue'], true) && isset($refused[strtoupper(trim((string) (((array) $b['input'])['issue_id'] ?? '')))]);
                         if (in_array($b['name'], ClaudePrompt::SERVER_TOOLS, true)) {
                             $content = $this->runLookup($yt, $b['name'], (array) $b['input']);
                             // only a text search for what the user described makes an issue changeable (reading one by key proves nothing)
@@ -364,7 +368,7 @@ class ChatController extends Controller
         }
 
         $startedAt = microtime(true);
-        $state = ['blocks' => [], 'stop' => null, 'failed' => false, 'text' => [], 'updates' => []];
+        $state = ['blocks' => [], 'stop' => null, 'failed' => false, 'text' => [], 'updates' => [], 'comments' => []];
         $buffer = '';
         while (! $stream->eof()) {
             if (microtime(true) - $startedAt > self::ROUND_DEADLINE) {
@@ -384,6 +388,7 @@ class ChatController extends Controller
             'stop' => $state['stop'],
             'text' => implode('', $state['text']),
             'updates' => $state['updates'],
+            'comments' => $state['comments'],
         ];
     }
 
@@ -430,9 +435,9 @@ class ChatController extends Controller
                         }
                     }
 
-                    $event = ['update_issue_draft' => 'draft', 'create_issue' => 'create', 'update_issue' => 'update', 'propose_issues' => 'batch'][$block['name']] ?? null;
-                    if ($event === 'update' && is_array($input)) {
-                        $state['updates'][] = $input; // applied only if the guard in relay() allows it
+                    $event = ['update_issue_draft' => 'draft', 'create_issue' => 'create', 'update_issue' => 'update', 'comment_issue' => 'comment', 'propose_issues' => 'batch'][$block['name']] ?? null;
+                    if (($event === 'update' || $event === 'comment') && is_array($input)) {
+                        $state[$event === 'update' ? 'updates' : 'comments'][] = $input; // applied only if the guard in relay() allows it
                     } elseif ($event && is_array($input)) {
                         $emit($event, match ($event) {
                             'draft' => ['patch' => $input],
@@ -483,6 +488,12 @@ class ChatController extends Controller
                         default => $i[$c],
                     }, $columns), $res['issues']),
                 ], JSON_UNESCAPED_UNICODE);
+            }
+
+            if ($name === 'list_comments') {
+                $comments = array_map(fn ($c) => ['id' => $c['id'], 'author' => $c['author'], 'created' => $c['created'], 'text' => mb_substr($c['text'], 0, 1500)], $yt->comments((string) ($input['issue_id'] ?? '')));
+
+                return json_encode(['comments' => $comments], JSON_UNESCAPED_UNICODE);
             }
 
             $issue = $yt->getIssue((string) ($input['issue_id'] ?? ''));

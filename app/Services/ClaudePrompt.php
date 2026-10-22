@@ -34,6 +34,7 @@ TXT;
     /** How to edit existing YouTrack issues (both modes). */
     private const EDIT_RULES = <<<'TXT'
 Editing existing issues: when the user wants to change an existing YouTrack issue (given by key like DEV-12, by its title or description, as "the issue you just created", or as a correction such as "afinal não era X mas Y, altera o issue"), call `update_issue` with `issue_id` and ONLY the fields that change, and put your short message in its required `message` field. If the issue is only identified by words, call `find_issues` first (use `get_issue` when you need its current description or fields to edit them). If several issues plausibly match, ask which one in plain text; if none matches, say so. When the correction changes the description, send the COMPLETE new Markdown description: start from the current one, apply the user's correction, keep everything else (including exact values such as "15px"). Never invent an issue key. Values for type, priority, assignee, subsystem, state and custom fields must exist in the catalog of the issue's project (use that project's lists; the project key is the part of the key before the last dash). Do not claim an issue was changed unless you called `update_issue`. Attachments: images and files the user sends in this conversation are attached to the YouTrack issue by the app itself (the user ticks which ones on the card, or all of them when the app creates/updates the issue right away). When the user asks to attach an image/file to an existing issue, call `update_issue` with just `issue_id` and `message` (no other field is needed). Never claim a file was attached unless you called `update_issue`, create_issue or the draft tool in this turn.
+Comments: when the user asks to add a comment or a note to an existing issue ("adiciona este comentário ao DEV-51", "comenta no issue que já está em teste"), call `comment_issue` with `issue_id`, the comment `text` and your short `message`. The same rules as for changes apply to WHICH issue: only one the user attached, named or described (use `find_issues` for a description); never assume one from earlier messages. Never claim a comment was added unless you called `comment_issue` in this turn. You can EDIT the user's own comments (never someone else's): take the `comment_id` from the `[App: …]` note if you posted it in this conversation, otherwise call `list_comments` for the issue and pick the comment whose author is the user (ask which one if unclear), then call `comment_issue` with that `comment_id` and the new full `text`. Never add a new comment to fix an old one. You cannot delete comments (say so plainly if asked). Notes like `[App: the comment was posted on issue DEV-54: …]` in the conversation are what the app really did: trust them over your memory.
 Attached issues: the user may attach YouTrack issues to a message, like an image, to say which issue(s) the message is about. A message that carried issues starts with a tag like `[Contexto: DEV-3]` or `[Contexto: DEV-3, DEV-4]`: those issues belong to THAT message only. Never carry a tag over to a later message that has none of its own. When the user says \"o issue\" / \"it\" and no issue is attached to the current message: for a plain QUESTION you may follow the conversation if it is obvious which issue was just discussed; for any CHANGE to an issue (edit, assign, close, reopen) never assume one from earlier messages or tags: ask which issue, or find it with `find_issues`, unless they name it.
 TXT;
 
@@ -53,7 +54,7 @@ Several issues at once: when the user pastes (or attaches) a longer text such as
 TXT;
 
     /** Names of the tools the server runs itself (the model continues after their result). */
-    public const SERVER_TOOLS = ['find_issues', 'count_issues', 'get_issue'];
+    public const SERVER_TOOLS = ['find_issues', 'count_issues', 'get_issue', 'list_comments'];
 
     public const DRAFT_FIELDS = ['summary', 'description', 'project', 'type', 'priority', 'assignee', 'labels', 'sprint', 'subsystem'];
 
@@ -292,6 +293,27 @@ PROMPT;
         ];
     }
 
+    /** Add a comment to an existing issue; the app posts it in YouTrack right away. */
+    public static function commentIssueTool(): array
+    {
+        $str = ['type' => 'string'];
+
+        return [
+            'name' => 'comment_issue',
+            'description' => 'Add a comment to an existing YouTrack issue, or (with comment_id) rewrite one of the user\'s own comments. Only when the user asks to comment on / add a note / correct a comment.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'issue_id' => $str + ['description' => 'Issue key, e.g. DEV-12. Never invent one: get it from the user, the conversation or find_issues.'],
+                    'text' => $str + ['description' => 'The comment, in Markdown, in the language the user wrote it. Keep their words and meaning; only fix typos or tidy the format.'],
+                    'comment_id' => $str + ['description' => 'Only to EDIT: the comment_id from an [App: …] note or from list_comments. Then `text` is the complete new text. Omit it to add a new comment.'],
+                    'message' => $str + ['description' => 'Short message to the user (same language; pt-PT if Portuguese) saying on which issue the comment is being added (or edited). The app applies it right after.'],
+                ],
+                'required' => ['issue_id', 'text', 'message'],
+            ],
+        ];
+    }
+
     public static function findIssuesTool(): array
     {
         return [
@@ -327,6 +349,20 @@ PROMPT;
         return [
             'name' => 'get_issue',
             'description' => 'Read one issue (summary, description and fields) before editing it.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => ['issue_id' => ['type' => 'string', 'description' => 'Issue key, e.g. DEV-12']],
+                'required' => ['issue_id'],
+            ],
+        ];
+    }
+
+    /** Reads the comments of an issue, to find the id of the one to edit. */
+    public static function listCommentsTool(): array
+    {
+        return [
+            'name' => 'list_comments',
+            'description' => 'List the comments of an issue (id, author, text, date). Use it to find the comment_id before editing a comment that is not noted as [App: …] in this conversation. Only comments written by the user can be edited.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => ['issue_id' => ['type' => 'string', 'description' => 'Issue key, e.g. DEV-12']],
