@@ -15,7 +15,14 @@ beforeEach(function () {
             ['field' => ['name' => 'Type', 'fieldType' => ['isMultiValue' => false]], '$type' => 'EnumProjectCustomField', 'bundle' => ['values' => [['name' => 'Bug'], ['name' => 'Task']]]],
             ['field' => ['name' => 'Priority', 'fieldType' => ['isMultiValue' => false]], '$type' => 'EnumProjectCustomField', 'bundle' => ['values' => [['name' => 'Major'], ['name' => 'Minor']]]],
         ]),
-        'yt.test/api/issues?*' => Http::sequence()->push(['id' => '2-1', 'idReadable' => 'DEV-1'])->push(['id' => '2-2', 'idReadable' => 'DEV-2']),
+        'yt.test/api/issues?*' => function ($r) {
+            static $created = 0;
+            if ($r->method() === 'GET') {
+                return Http::response([]); // searches (look-alikes, who resolved similar issues): nothing found
+            }
+
+            return Http::response(['id' => '2-'.(++$created), 'idReadable' => 'DEV-'.$created]);
+        },
         'yt.test/*' => Http::response([]),
     ]);
 });
@@ -66,7 +73,14 @@ it('creates only the approved items, applying the edits, and marks the discarded
 });
 
 it('keeps a failing item pending with its error and still creates the others', function () {
-    ($this->fakeYouTrack)(['yt.test/api/issues?*' => Http::sequence()->push(['error' => 'boom'], 500)->push(['id' => '2-2', 'idReadable' => 'DEV-2'])]);
+    ($this->fakeYouTrack)(['yt.test/api/issues?*' => function ($r) {
+        static $posts = 0;
+        if ($r->method() === 'GET') {
+            return Http::response([]);
+        }
+
+        return ++$posts === 1 ? Http::response(['error' => 'boom'], 500) : Http::response(['id' => '2-2', 'idReadable' => 'DEV-2']);
+    }]);
     [$cid, $msg] = batchTurn($this, [batchProposal(), batchProposal(['summary' => 'Segundo'])]);
 
     $items = $this->postJson("/api/conversations/$cid/messages/{$msg['id']}/batch", ['create' => [['index' => 0], ['index' => 1]]])

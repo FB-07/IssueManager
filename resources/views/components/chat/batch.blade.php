@@ -99,6 +99,11 @@
         </div>
     </template>
 
+    {{-- the assignee question's answers sit between the review and the approved ones --}}
+    <template x-if="m.id === s.messages.at(-1)?.id && s.quickReplies.length">
+        <x-chat.quick-replies />
+    </template>
+
     {{-- carousel of the accepted ones --}}
     <template x-if="s.batchAccepted(m).length">
         <section class="anim-rise" x-data="{ strip: null }" x-init="strip = $refs.strip">

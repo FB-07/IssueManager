@@ -59,7 +59,7 @@
                         <template x-if="m.id === s.lastCardId && s.draft && (m.meta?.card || s.draft.status === 'error')">
                             <x-issue.card />
                         </template>
-                        <template x-if="m.id === s.messages.at(-1)?.id && s.quickReplies.length">
+                        <template x-if="m.id === s.messages.at(-1)?.id && s.quickReplies.length && !m.meta?.batch">
                             <x-chat.quick-replies />
                         </template>
                         <template x-if="m.meta?.card && m.id !== s.lastCardId">

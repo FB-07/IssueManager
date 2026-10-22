@@ -142,7 +142,7 @@ return [
     'chat' => [
         'similar_held' => 'Antes de criar: já existem issues parecidos. Revê o rascunho abaixo; nada foi criado.',
         'duplicate_held' => 'Antes de criar: já existe um issue que parece duplicado. Revê o rascunho abaixo; nada foi criado.',
-        'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
+        'quick_replies' => 'Respostas rápidas', 'pick_one' => 'Escolhe uma opção:', 'assign_me' => 'Atribui-me a mim', 'no_assignee' => 'Sem responsável', 'no_assignee_text' => 'Não, deixa sem responsável', 'choose_assignee' => 'Escolher responsável…',
         'updating' => 'A atualizar o Issue no YouTrack…', 'updating_issue' => 'A atualizar o Issue no YouTrack.',
         'creating' => 'A criar o Issue no YouTrack…', 'creating_issue' => 'A criar o Issue no YouTrack.', 'preparing' => 'A preparar a resposta… :time', 'cancelled' => 'Mensagem cancelada', 'jump_bottom' => 'Ir para o fim', 'long_notice' => 'Esta conversa já é longa: cada mensagem custa mais e o Claude pode perder o fio. Uma conversa nova costuma dar melhores respostas.', 'long_new' => 'Nova conversa', 'commenting' => 'A comentar no YouTrack…', 'commenting_issue' => 'A adicionar o comentário ao Issue.', 'processing' => 'A pensar…', 'previous_attachments' => 'anexos anteriores', 'attachments_only' => '(sem texto, apenas anexos)', 'ask_assignee' => 'Queres associar alguém a este Issue? Disponíveis: :names.', 'draft_updated' => 'Atualizei o rascunho do Issue.'],
 
@@ -226,7 +226,7 @@ return [
         'title' => ':n issues propostos', 'hint' => 'Marca os que queres criar. Clica no título para editar. Nada é criado sem a tua aprovação.',
         'select_all' => 'Todos', 'select_none' => 'Nenhum', 'edit' => 'Editar', 'discard' => 'Descartar', 'incomplete' => 'Incompleto',
         'selected' => ':n de :total selecionados', 'create' => 'Criar :n no YouTrack', 'creating' => 'A criar…',
-        'found' => 'Encontrei :n itens para transformar em issues.', 'missing' => 'Preenche primeiro os campos obrigatórios dos issues destacados.',
+        'found' => 'Encontrei :n itens para transformar em issues.', 'assigned' => ':name atribuído à proposta :n.', 'assign_failed' => 'Essa pessoa não está no projeto desta proposta.', 'missing' => 'Preenche primeiro os campos obrigatórios dos issues destacados.',
         'done' => 'Issues criados no YouTrack.', 'partial' => 'Criados: :ok; falharam: :failed (vê a lista).',
     ],
 

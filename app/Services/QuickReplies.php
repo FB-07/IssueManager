@@ -8,7 +8,7 @@ class QuickReplies
     public const KINDS = ['text', 'person', 'project'];
 
     /** Buttons the app itself adds (never accepted from the model): kind => allowed values. */
-    public const ACTIONS = ['action' => ['choose_assignee']];
+    public const ACTIONS = ['action' => ['choose_assignee', 'decline_assignee']];
 
     /**
      * @return list<array{label:string,text:string,kind:string,value:?string}>

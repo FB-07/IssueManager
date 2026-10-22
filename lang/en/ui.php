@@ -142,7 +142,7 @@ return [
     'chat' => [
         'similar_held' => 'Before creating it: similar issues already exist. Check the draft below; nothing was created.',
         'duplicate_held' => 'Before creating it: an issue that looks like a duplicate already exists. Check the draft below; nothing was created.',
-        'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
+        'quick_replies' => 'Quick replies', 'pick_one' => 'Pick an option:', 'assign_me' => 'Assign to me', 'no_assignee' => 'No assignee', 'no_assignee_text' => 'No, leave it without an assignee', 'choose_assignee' => 'Choose an assignee…',
         'updating' => 'Updating the issue in YouTrack…', 'updating_issue' => 'Updating the issue in YouTrack.',
         'creating' => 'Creating the issue in YouTrack…', 'creating_issue' => 'Creating the issue in YouTrack.', 'preparing' => 'Preparing the answer… :time', 'cancelled' => 'Message cancelled', 'jump_bottom' => 'Jump to the end', 'long_notice' => 'This conversation is already long: every message costs more and Claude may lose the thread. A new conversation usually gives better answers.', 'long_new' => 'New chat', 'commenting' => 'Commenting in YouTrack…', 'commenting_issue' => 'Adding the comment to the issue.', 'processing' => 'Thinking…', 'previous_attachments' => 'previous attachments', 'attachments_only' => '(no text, attachments only)', 'ask_assignee' => 'Do you want to assign someone to this issue? Available: :names.', 'draft_updated' => 'I updated the issue draft.'],
 
@@ -226,7 +226,7 @@ return [
         'title' => ':n proposed issues', 'hint' => 'Tick the ones to create. Click a title to edit it. Nothing is created until you approve.',
         'select_all' => 'All', 'select_none' => 'None', 'edit' => 'Edit', 'discard' => 'Discard', 'incomplete' => 'Incomplete',
         'selected' => ':n of :total selected', 'create' => 'Create :n in YouTrack', 'creating' => 'Creating…',
-        'found' => 'I found :n items to turn into issues.', 'missing' => 'Fill in the required fields of the highlighted issues first.',
+        'found' => 'I found :n items to turn into issues.', 'assigned' => ':name assigned to proposal :n.', 'assign_failed' => 'That person is not in the project of this proposal.', 'missing' => 'Fill in the required fields of the highlighted issues first.',
         'done' => 'Issues created in YouTrack.', 'partial' => 'Created :ok; :failed failed (see the list).',
     ],
 

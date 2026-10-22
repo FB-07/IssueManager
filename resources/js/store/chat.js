@@ -26,6 +26,7 @@ export function chatSlice() {
         elapsed: 0, // seconds since the message was sent, while the answer is being prepared
         stalled: false,
         assigneeDeclined: new Set(),
+        repliesDone: new Set(), // messages whose quick replies were used (the batch ones are applied here, not sent)
         pending: new Set(),
         composer: { text: '', files: [], quote: '' }, // quote: a passage of an earlier answer this message replies to
         selection: null, // issues attached to the message being written, like its files: [{ key, summary, state, url }]
@@ -102,7 +103,7 @@ export function chatSlice() {
         },
         get quickReplies() {
             const last = this.messages.at(-1);
-            if (this.processing || last?.role !== 'assistant' || !last.meta?.replies?.length) return [];
+            if (this.processing || last?.role !== 'assistant' || !last.meta?.replies?.length || this.repliesDone.has(last.id)) return [];
 
             return last.meta.replies.map((r) => this.resolveReply(r));
         },
@@ -122,6 +123,14 @@ export function chatSlice() {
         },
         pickReply(r) {
             if (this.processing) return;
+            const last = this.messages.at(-1);
+            // under a batch of proposals the answer to "who do you assign?" goes straight into the proposal being looked at
+            if (last?.meta?.batch?.items?.length && ((r.kind === 'person' && r.value) || (r.kind === 'action' && r.value === 'decline_assignee'))) {
+                if (r.kind === 'person') this.assignBatch(last, r.value);
+                else this.repliesDone.add(last.id); // "not yet": the question is closed; a person leaves the buttons for the next proposals
+
+                return;
+            }
             if (r.kind === 'action' && r.value === 'choose_assignee') {
                 this.cardTab = 'edit';
                 this.focusField('assignee');
@@ -130,6 +139,29 @@ export function chatSlice() {
                 return;
             }
             this.send(r.text || r.label);
+        },
+        /** Assigns `login` to the proposal being looked at (the one opened for editing, else the next to decide), not to the others. */
+        assignBatch(m, login) {
+            const st = this.batchState(m);
+            const index = st.viewing ?? this.batchCursor(m);
+            const row = index === null ? null : st.rows[index];
+            const people = row ? (this.catalog?.byProject?.[row.project]?.assignees ?? this.metaByProject[row.project]?.assignees ?? []) : [];
+            const person = people.find((a) => a.value === login);
+            if (!row || row.status !== 'pending' || !person) {
+                this.notify(this.t('batch.assign_failed'), 'error');
+
+                return;
+            }
+            row.assignee = login;
+            this.batchTouch(m);
+            this.notify(this.t('batch.assigned', { n: index + 1, name: person.label }), 'success');
+        },
+        /** The people of the projects of the proposals that still have no assignee (the same person once). */
+        batchPeople(rows, catalog = this.catalog) {
+            const people = new Map();
+            rows.filter((r) => !r.assignee).forEach((r) => (catalog?.byProject?.[r.project]?.assignees ?? []).forEach((a) => people.set(a.value, a)));
+
+            return [...people.values()];
         },
         /** The stop button: ends the answer being written; the message stays and the reply becomes "message cancelled". */
         stopAnswer() {
@@ -199,7 +231,7 @@ export function chatSlice() {
                 let text = '';
                 const ctl = (answerAbort = new AbortController());
                 ctl.timer = setTimeout(() => ctl.abort(new DOMException('timeout', 'TimeoutError')), 330000); // a stalled connection must not leave the chat waiting forever
-                const { patch: draftPatch, created, updated, commented, replies: modelReplies, batch, stopped } = await streamChat(
+                const { patch: draftPatch, created, updated, commented, replies: streamedReplies, batch, stopped } = await streamChat(
                     {
                         payload: {
                             messages: turns,
@@ -235,6 +267,7 @@ export function chatSlice() {
                     live.body = text;
                 }
 
+                let modelReplies = streamedReplies;
                 // draft mode off: Claude may call create_issue when the user explicitly asks for an issue
                 // several issues proposed from a pasted text: reviewed one by one in a checklist, never created right away
                 const proposals = batch?.issues?.length ? batch.issues : null;
@@ -253,6 +286,24 @@ export function chatSlice() {
                 if (!text.trim() && commented?.message) text = commented.message;
                 if (!text.trim() && commented) text = this.t('chat.commenting_issue');
                 if (!text.trim() && patch) text = this.t(direct ? 'chat.creating_issue' : 'chat.draft_updated');
+
+                // proposals without an assignee: the same question and buttons as the single draft; a click fills them all
+                let batchAsked = false;
+                if (proposals && !this.assigneeDeclined.has(this.activeId)) {
+                    const people = this.batchPeople(proposals, catalog);
+                    if (people.length) {
+                        text = `${text.trim()}\n\n${this.t('chat.ask_assignee', { names: people.map((a) => a.label).join(', ') })}`;
+                        batchAsked = true;
+                        if (!modelReplies?.length) {
+                            const me = people.find((a) => a.label.toLowerCase() === String(this.user?.name ?? '').toLowerCase());
+                            const others = people.filter((a) => a !== me).sort(() => Math.random() - 0.5).slice(0, me ? 2 : 3); // a different few each time
+                            modelReplies = [
+                                ...[me, ...others].filter(Boolean).map((a) => ({ label: a === me ? this.t('chat.assign_me') : a.label, text: a.label, kind: 'person', value: a.value })),
+                                { label: this.t('chat.no_assignee'), text: this.t('chat.no_assignee_text'), kind: 'action', value: 'decline_assignee' },
+                            ];
+                        }
+                    }
+                }
 
                 // Always offer an assignee while the draft has none (done by the app so it never depends on the model)
                 let askedAssignee = false;
@@ -279,7 +330,7 @@ export function chatSlice() {
                 const fd = new FormData();
                 fd.append('body', body);
                 if (issues.length) fd.append('contexts', JSON.stringify(issues.map((i) => ({ key: i.key, summary: i.summary }))));
-                fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, batch: proposals, asked_assignee: askedAssignee, replies }));
+                fd.append('assistant', JSON.stringify({ text, draft_patch: this.draftEnabled || direct ? patch : null, direct, batch: proposals, asked_assignee: askedAssignee || batchAsked, replies }));
                 files.forEach((f) => fd.append('files[]', f.file));
                 const res = await api('POST', `/api/conversations/${this.activeId}/turn`, fd);
 

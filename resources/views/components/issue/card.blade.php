@@ -96,7 +96,7 @@
         {{-- properties --}}
         <section class="rounded-2xl border border-line bg-surface-2/40 p-4" aria-labelledby="card-props">
             <h4 id="card-props" class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-faint" x-text="s.t('card.section_properties')"></h4>
-            <div class="grid gap-4 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-2">
+            <div class="grid gap-4 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-[auto_auto]">
                 <x-issue.field :c="$c" field="project" required>
                     <x-ui.select id="field-project" value="{{ $c }}.draft.project" select="{{ $c }}.setField('project', $value || null)"
                         options="(s.projects ?? []).map((p) => s.projectOption(p))" invalid="{{ $c }}.missing.includes('project')" on-open="s.loadProjects()" />
