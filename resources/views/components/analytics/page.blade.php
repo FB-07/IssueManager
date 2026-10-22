@@ -28,13 +28,12 @@
         <p class="rounded-lg border border-warn/30 bg-warn-soft px-3 py-2 text-xs text-warn" x-show="s.analytics?.capped" x-text="s.t('analytics.capped')"></p>
 
         {{-- the numbers --}}
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             @foreach ([
                 ['open', "s.analytics?.kpis.open", 'kpi_open', null],
                 ['created', "s.analytics?.kpis.created_in_range", 'kpi_created', 'range'],
                 ['resolved', "s.analytics?.kpis.resolved_in_range", 'kpi_resolved', 'range'],
                 ['rate', "s.analytics?.kpis.resolution_rate != null ? s.analytics.kpis.resolution_rate + '%' : '–'", 'kpi_rate', 'range'],
-                ['days', "s.analytics?.kpis.avg_days != null ? s.analytics.kpis.avg_days + ' d' : '–'", 'kpi_days', 'median'],
                 ['unassigned', "s.analytics?.kpis.unassigned_open", 'kpi_unassigned', null],
             ] as [$id, $value, $label, $sub])
                 <div class="rounded-xl border border-line px-3.5 py-3">
@@ -42,8 +41,6 @@
                     <p class="mt-1 text-2xl font-semibold tabular-nums" x-text="{!! $value !!}"></p>
                     @if ($sub === 'range')
                         <p class="mt-0.5 text-[11px] leading-snug text-faint" x-text="s.t('analytics.range_' + s.analyticsGranularity)"></p>
-                    @elseif ($sub === 'median')
-                        <p class="mt-0.5 text-[11px] leading-snug text-faint" x-text="s.analytics?.kpis.median_days != null ? s.t('analytics.median', { n: s.analytics.kpis.median_days }) : ''"></p>
                     @endif
                 </div>
             @endforeach
@@ -74,16 +71,14 @@
             <div class="max-h-[28rem] overflow-y-auto">
                 <table class="w-full text-sm">
                     <thead class="sticky top-0 bg-surface text-left text-xs text-muted">
-                        <tr><th class="px-4 py-2 font-medium sm:px-5" x-text="s.t('fields.assignee')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.col_open')"></th><th class="hidden px-2 py-2 font-medium sm:table-cell" x-text="s.t('analytics.col_resolved')"></th><th class="hidden px-2 py-2 font-medium sm:table-cell" x-text="s.t('analytics.col_age')"></th><th class="px-4 py-2 text-right font-medium sm:px-5" x-text="s.t('analytics.col_oldest')"></th></tr>
+                        <tr><th class="px-4 py-2 font-medium sm:px-5" x-text="s.t('fields.assignee')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.col_open')"></th><th class="px-4 py-2 text-right font-medium sm:px-5" x-text="s.t('analytics.col_resolved')"></th></tr>
                     </thead>
                     <tbody class="divide-y divide-line">
                         <template x-for="(p, n) in (s.analytics?.assignees ?? [])" x-bind:key="n">
                             <tr>
                                 <td class="px-4 py-2.5 sm:px-5"><span class="flex items-center gap-2.5"><span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted" x-text="(p.name || '?').slice(0, 1).toUpperCase()"></span><span class="min-w-0 truncate" x-bind:class="!p.name && 'text-muted italic'" x-text="p.name || s.t('analytics.unassigned')"></span></span></td>
                                 <td class="px-2 py-2.5"><span class="flex items-center gap-2"><span class="w-7 text-right font-semibold tabular-nums" x-text="p.open"></span><span class="hidden h-2 w-24 rounded-r-[4px] bg-surface-3/40 sm:block"><span class="block h-2 rounded-r-[4px]" x-bind:style="`width:${(p.open / s.barMax(s.analytics.assignees.map((x) => ({ count: x.open })))) * 100}%; background: var(--viz-1)`"></span></span></span></td>
-                                <td class="hidden px-2 py-2.5 tabular-nums sm:table-cell" x-text="p.resolved"></td>
-                                <td class="hidden px-2 py-2.5 tabular-nums text-muted sm:table-cell" x-text="p.avg_age != null ? p.avg_age + ' d' : '–'"></td>
-                                <td class="px-4 py-2.5 text-right tabular-nums text-muted sm:px-5" x-text="p.oldest != null ? p.oldest + ' d' : '–'"></td>
+                                <td class="px-4 py-2.5 text-right tabular-nums sm:px-5" x-text="p.resolved"></td>
                             </tr>
                         </template>
                     </tbody>
@@ -112,10 +107,10 @@
             <summary class="cursor-pointer select-none px-4 py-3 text-sm font-medium sm:px-5" x-text="s.t('analytics.table')"></summary>
             <div class="overflow-x-auto border-t border-line">
                 <table class="w-full text-sm">
-                    <thead class="text-left text-xs text-muted"><tr><th class="px-4 py-2 font-medium sm:px-5" x-text="s.t('analytics.period')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.created')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.resolved')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.col_open_end')"></th><th class="px-4 py-2 text-right font-medium sm:px-5" x-text="s.t('analytics.kpi_days')"></th></tr></thead>
+                    <thead class="text-left text-xs text-muted"><tr><th class="px-4 py-2 font-medium sm:px-5" x-text="s.t('analytics.period')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.created')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.resolved')"></th><th class="px-4 py-2 text-right font-medium sm:px-5" x-text="s.t('analytics.col_open_end')"></th></tr></thead>
                     <tbody class="divide-y divide-line tabular-nums">
                         <template x-for="(p, n) in (s.analytics?.series ?? [])" x-bind:key="n">
-                            <tr><td class="px-4 py-2 sm:px-5" x-text="s.periodTitle(p)"></td><td class="px-2 py-2" x-text="p.created"></td><td class="px-2 py-2" x-text="p.resolved"></td><td class="px-2 py-2" x-text="p.open"></td><td class="px-4 py-2 text-right text-muted sm:px-5" x-text="p.avg_days != null ? p.avg_days + ' d' : '–'"></td></tr>
+                            <tr><td class="px-4 py-2 sm:px-5" x-text="s.periodTitle(p)"></td><td class="px-2 py-2" x-text="p.created"></td><td class="px-2 py-2" x-text="p.resolved"></td><td class="px-4 py-2 text-right sm:px-5" x-text="p.open"></td></tr>
                         </template>
                     </tbody>
                 </table>
