@@ -4,6 +4,8 @@
     <div class="space-y-5">
         <div class="flex flex-wrap items-center gap-2">
             <input class="field min-w-40 flex-1 py-1.5" x-model="s.issueFilters.q" @input="s.searchIssuesSoon()" x-bind:placeholder="s.t('issues.search')" x-bind:aria-label="s.t('issues.search')" maxlength="200">
+            <x-ui.select width="w-44" trigger="py-1.5" searchable="false" value="s.issueSort" select="s.setIssueSort($value)"
+                options="s.sortOptions" label="s.t('issues.sort')" />
             <button type="button" class="btn-icon size-9 border border-line" x-bind:class="s.mineSelectMode && 'border-accent/50 bg-accent-soft text-accent'" x-bind:aria-pressed="s.mineSelectMode" @click="s.toggleMineSelectMode()"
                     x-bind:aria-label="s.mineSelectMode ? s.t('common.cancel') : s.t('nav.select')" x-bind:title="s.mineSelectMode ? s.t('common.cancel') : s.t('nav.select')">
                 <x-ui.icon name="pointer" class="size-[18px]" />
@@ -35,7 +37,7 @@
         <div class="space-y-5 transition-opacity" x-show="s.issueResults.length" x-bind:class="s.issuesLoading && 'opacity-50'">
             <template x-for="g in s.issueGroups" x-bind:key="g.key">
                 <div>
-                    <h3 class="mb-2 flex items-center gap-2 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">
+                    <h3 x-show="!g.flat" class="mb-2 flex items-center gap-2 px-1 text-[13px] font-semibold uppercase tracking-wider text-muted">
                         <x-ui.avatar of="g.icon" size="size-6" />
                         <span x-text="g.name"></span><span class="font-mono text-[11px] font-normal normal-case text-faint" x-show="g.name !== g.key" x-text="g.key"></span>
                         <span class="ml-auto text-[11px] font-normal normal-case text-faint" x-text="g.count"></span>
@@ -49,7 +51,7 @@
                                     </span>
                                 </button>
                                 <button type="button" class="flex min-w-0 flex-1 items-center gap-3 py-3 pr-3.5 text-left transition hover:bg-surface-2" x-bind:class="!s.mineSelectMode && 'pl-3.5'" @click="s.mineSelectMode ? s.toggleMineSelect(i) : s.editMine(i)">
-                                    <span class="w-28 shrink-0 whitespace-nowrap font-mono text-xs text-muted" x-text="i.id"></span>
+                                    <span class="flex w-28 shrink-0 items-center gap-2 whitespace-nowrap font-mono text-xs text-muted"><template x-if="g.flat"><x-ui.avatar of="s.projectIconOf(i)" size="size-5" /></template><span x-text="i.id"></span></span>
                                     <span class="min-w-0 flex-1">
                                         <span class="block truncate text-sm" x-text="i.summary"></span>
                                         <span class="block truncate text-xs text-faint" x-text="[i.assignee, s.shortDate(i.updated)].filter(Boolean).join(' · ')"></span>

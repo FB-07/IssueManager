@@ -10,6 +10,7 @@ export function issuesSlice() {
         issueProjectTotals: {},
         issueProjectRanges: {},
         issueFilters: { q: '', project: '', type: '', priority: '', state: '', assignee: '' },
+        issueSort: 'project', // project (one block each) | updated | created | priority | state
         issuePage: 1,
         issuePerPage: 12,
         issueTotal: null,
@@ -80,6 +81,7 @@ export function issuesSlice() {
             if (!quiet) this.issuesLoading = true;
             const params = new URLSearchParams({ page, per_page: this.issuePerPage });
             Object.entries(this.issueFilters).forEach(([k, v]) => v !== '' && params.set(k, v));
+            params.set('sort', this.issueSort);
             try {
                 const res = await api('GET', `/api/youtrack/issues?${params}`, undefined, { silent: quiet });
                 if (seq !== issueSearchSeq) return;
@@ -154,9 +156,26 @@ export function issuesSlice() {
             return this.searchIssues(this.issuePage);
         },
         get issueGroups() {
-            return this.groupByProject(this.issueResults, this.issueProjectTotals, this.issueProjectRanges);
+            return this.groupByProject(this.issueResults, this.issueProjectTotals, this.issueProjectRanges, this.issueSort !== 'project');
         },
-        groupByProject(list, totals = {}, ranges = {}) {
+        /** The ways to order a list (the first groups by project, the others give one flat list). */
+        get sortOptions() {
+            return ['project', 'updated', 'created', 'priority', 'state'].map((k) => ({ value: k, label: this.t(`issues.sort_${k}`) }));
+        },
+        setIssueSort(v) {
+            this.issueSort = v || 'project';
+
+            return this.searchIssues(1);
+        },
+        /** The project's own icon for an issue of a flat list (initials underneath while it loads or when it has none). */
+        projectIconOf(i) {
+            const key = i.project ?? '';
+            const p = (this.catalog?.projects ?? []).find((x) => x.key === key);
+
+            return this.projectOption(p ?? { key, name: i.project_name || key });
+        },
+        groupByProject(list, totals = {}, ranges = {}, flat = false) {
+            if (flat) return list.length ? [{ key: '__flat', flat: true, name: '', icon: null, items: list, count: '' }] : [];
             const groups = new Map();
             for (const i of list) {
                 const key = i.project ?? '';

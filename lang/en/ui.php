@@ -53,7 +53,7 @@ return [
         'kpi_resolved' => 'Resolved',
         'kpi_rate' => 'Resolution rate',
         'kpi_days' => 'Average time to resolve',
-        'kpi_unassigned' => 'Open, unassigned',
+        'scope' => 'Scope', 'scope_team' => 'Everyone', 'scope_mine' => 'My issues', 'kpi_unassigned' => 'Open, unassigned',
         'range_week' => 'Last 12 weeks',
         'range_month' => 'Last 12 months',
         'range_year' => 'Last 5 years',
@@ -244,7 +244,7 @@ return [
     'issues' => [
         'details' => 'Details', 'l_created_by' => 'Created by', 'l_created' => 'Created', 'l_updated' => 'Updated', 'l_resolved' => 'Resolved', 'l_comments' => 'Comments',
         'all_projects' => 'All projects', 'all_types' => 'All types', 'all_priorities' => 'All priorities',
-        'all_states' => 'All states', 'all_assignees' => 'All assignees', 'state' => 'State',
+        'sort' => 'Sort by', 'sort_project' => 'Project', 'sort_updated' => 'Most recent', 'sort_created' => 'Newest created', 'sort_priority' => 'Priority', 'sort_state' => 'State', 'all_states' => 'All states', 'all_assignees' => 'All assignees', 'state' => 'State',
         'clear' => 'Clear filters', 'per_page' => 'Per page', 'prev' => 'Previous page', 'next' => 'Next page',
         'range' => ':from–:to of :total', 'range_unknown' => ':from–:to', 'page' => 'Page :n',
         'title' => 'Existing issues',

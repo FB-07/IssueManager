@@ -77,6 +77,7 @@ export function analyticsSlice() {
         analyticsLoading: false,
         analyticsGranularity: 'week',
         analyticsProject: '',
+        analyticsMine: false, // only the issues assigned to the user
         async openAnalytics({ push = true } = {}) {
             this.stopVoice(true);
             this.page = 'analytics';
@@ -90,6 +91,7 @@ export function analyticsSlice() {
             this.analyticsLoading = true;
             const params = new URLSearchParams({ granularity: this.analyticsGranularity });
             if (this.analyticsProject) params.set('project', this.analyticsProject);
+            if (this.analyticsMine) params.set('mine', '1');
             try {
                 const res = await api('GET', `/api/youtrack/analytics?${params}`);
                 if (seq === analyticsSeq) this.analytics = res;
@@ -102,6 +104,12 @@ export function analyticsSlice() {
         setAnalyticsGranularity(g) {
             if (g === this.analyticsGranularity) return;
             this.analyticsGranularity = g;
+
+            return this.loadAnalytics();
+        },
+        setAnalyticsMine(v) {
+            if (v === this.analyticsMine) return;
+            this.analyticsMine = v;
 
             return this.loadAnalytics();
         },

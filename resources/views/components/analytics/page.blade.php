@@ -7,6 +7,11 @@
                 <button type="button" class="rounded-md px-3 py-1.5 transition" x-bind:class="s.analyticsGranularity === '{{ $g }}' ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg'" x-bind:aria-pressed="s.analyticsGranularity === '{{ $g }}'" @click="s.setAnalyticsGranularity('{{ $g }}')" x-text="s.t('analytics.by_{{ $g }}')"></button>
             @endforeach
         </div>
+        <div class="inline-flex rounded-lg border border-line p-0.5 text-xs font-medium" role="group" x-bind:aria-label="s.t('analytics.scope')">
+            @foreach ([false => 'team', true => 'mine'] as $flag => $k)
+                <button type="button" class="rounded-md px-3 py-1.5 transition" x-bind:class="s.analyticsMine === {{ $flag ? 'true' : 'false' }} ? 'bg-surface-3 text-fg' : 'text-muted hover:text-fg'" x-bind:aria-pressed="s.analyticsMine === {{ $flag ? 'true' : 'false' }}" @click="s.setAnalyticsMine({{ $flag ? 'true' : 'false' }})" x-text="s.t('analytics.scope_{{ $k }}')"></button>
+            @endforeach
+        </div>
         <div class="w-56">
             <x-ui.select trigger="py-1.5" searchable="true" value="s.analyticsProject" select="s.setAnalyticsProject($value)"
                 options="(s.catalog?.projects ?? []).map((p) => s.projectOption(p))" empty-label="s.t('issues.all_projects')" label="s.t('fields.project')" />
@@ -36,7 +41,7 @@
                 ['rate', "s.analytics?.kpis.resolution_rate != null ? s.analytics.kpis.resolution_rate + '%' : '–'", 'kpi_rate', 'range'],
                 ['unassigned', "s.analytics?.kpis.unassigned_open", 'kpi_unassigned', null],
             ] as [$id, $value, $label, $sub])
-                <div class="rounded-xl border border-line px-3.5 py-3">
+                <div class="rounded-xl border border-line px-3.5 py-3" @if ($id === 'unassigned') x-show="!s.analytics?.mine" @endif>
                     <p class="text-xs text-muted" x-text="s.t('analytics.{{ $label }}')"></p>
                     <p class="mt-1 text-2xl font-semibold tabular-nums" x-text="{!! $value !!}"></p>
                     @if ($sub === 'range')
@@ -66,7 +71,7 @@
         </div>
 
         {{-- who has what open --}}
-        <div class="rounded-2xl border border-line">
+        <div class="rounded-2xl border border-line" x-show="!s.analytics?.mine">
             <h3 class="border-b border-line px-4 py-3 text-sm font-semibold sm:px-5" x-text="s.t('analytics.people')"></h3>
             <div class="max-h-[28rem] overflow-y-auto">
                 <table class="w-full text-sm">

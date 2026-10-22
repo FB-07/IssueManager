@@ -53,7 +53,7 @@ return [
         'kpi_resolved' => 'Resolvidos',
         'kpi_rate' => 'Taxa de resolução',
         'kpi_days' => 'Tempo médio até resolver',
-        'kpi_unassigned' => 'Abertos sem responsável',
+        'scope' => 'Âmbito', 'scope_team' => 'Todos', 'scope_mine' => 'Meus issues', 'kpi_unassigned' => 'Abertos sem responsável',
         'range_week' => 'Últimas 12 semanas',
         'range_month' => 'Últimos 12 meses',
         'range_year' => 'Últimos 5 anos',
@@ -244,7 +244,7 @@ return [
     'issues' => [
         'details' => 'Detalhes', 'l_created_by' => 'Criado por', 'l_created' => 'Criado em', 'l_updated' => 'Atualizado em', 'l_resolved' => 'Resolvido em', 'l_comments' => 'Comentários',
         'all_projects' => 'Todos os projetos', 'all_types' => 'Todos os tipos', 'all_priorities' => 'Todas as prioridades',
-        'all_states' => 'Todos os estados', 'all_assignees' => 'Todos os responsáveis', 'state' => 'Estado',
+        'sort' => 'Ordenar por', 'sort_project' => 'Projeto', 'sort_updated' => 'Mais recentes', 'sort_created' => 'Criados há menos tempo', 'sort_priority' => 'Prioridade', 'sort_state' => 'Estado', 'all_states' => 'Todos os estados', 'all_assignees' => 'Todos os responsáveis', 'state' => 'Estado',
         'clear' => 'Limpar filtros', 'per_page' => 'Por página', 'prev' => 'Página anterior', 'next' => 'Página seguinte',
         'range' => ':from–:to de :total', 'range_unknown' => ':from–:to', 'page' => 'Página :n',
         'title' => 'Issues existentes',

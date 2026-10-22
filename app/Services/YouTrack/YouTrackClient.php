@@ -359,7 +359,11 @@ class YouTrackClient
     public function avatarsByName(array $names, ?string $project = null): array
     {
         $want = array_fill_keys(array_map('mb_strtolower', array_filter($names)), true);
-        $keys = $project ? [$project] : array_column($this->projects(), 'key');
+        try {
+            $keys = $project ? [$project] : array_column($this->projects(), 'key');
+        } catch (TrackerException) {
+            return []; // pictures are a nicety: the page works without them
+        }
         $found = [];
         foreach (array_slice($keys, 0, 30) as $key) {
             if (! $want || count($found) === count($want)) {

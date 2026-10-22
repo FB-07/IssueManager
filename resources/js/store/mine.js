@@ -13,6 +13,7 @@ export function mineSlice() {
         mineStatus: 'open',
         mineQ: '',
         mineFilters: { project: '', type: '', priority: '', state: '' },
+        mineSort: 'project',
         minePerPage: 12,
         mineSelectMode: false,
         mineProjectTotals: {},
@@ -44,6 +45,7 @@ export function mineSlice() {
             const params = new URLSearchParams({ scope: this.mineScope, status: this.mineStatus, page, per_page: this.minePerPage });
             Object.entries(this.mineFilters).forEach(([k, v]) => v !== '' && params.set(k, v));
             if (this.mineQ.trim()) params.set('q', this.mineQ.trim());
+            params.set('sort', this.mineSort);
             try {
                 const res = await api('GET', `/api/youtrack/mine?${params}`, undefined, { silent: quiet });
                 if (seq !== mineSeq) return;
@@ -64,7 +66,12 @@ export function mineSlice() {
         },
         /** The issues of the page, one group per project (the server sorts by project, so each project is in one place). */
         get mineGroups() {
-            return this.groupByProject(this.mineResults, this.mineProjectTotals, this.mineProjectRanges);
+            return this.groupByProject(this.mineResults, this.mineProjectTotals, this.mineProjectRanges, this.mineSort !== 'project');
+        },
+        setMineSort(v) {
+            this.mineSort = v || 'project';
+
+            return this.searchMine(1);
         },
         get mineFilterOptions() {
             return this.filterOptionsFor(this.mineFilters.project);

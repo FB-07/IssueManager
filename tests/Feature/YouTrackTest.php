@@ -288,3 +288,31 @@ it('serves the analysis numbers computed from the issues of YouTrack', function 
     $sent = Http::recorded()->map(fn ($p) => urldecode($p[0]->url()))->first(fn ($u) => str_contains($u, '/api/issues?'));
     expect($sent)->toContain('project: {DEV}');
 });
+
+it('orders the lists as asked (flat, no per-project counts) and by project by default', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    Http::fake(['yt.test/*' => Http::response([])]);
+
+    $this->getJson('/api/youtrack/issues?sort=priority')->assertOk()->assertJsonPath('project_totals', []);
+    Http::assertSent(fn ($r) => str_contains(urldecode($r->url()), 'sort by: Priority asc, updated desc'));
+
+    $this->getJson('/api/youtrack/issues')->assertOk();
+    Http::assertSent(fn ($r) => str_contains(urldecode($r->url()), 'sort by: project asc, updated desc'));
+
+    $this->getJson('/api/youtrack/issues?sort=inventado')->assertStatus(422);
+});
+
+it('analyses only the issues assigned to the user when asked', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    $issue = fn (string $who) => ['created' => now()->subDay()->getTimestamp() * 1000, 'project' => ['shortName' => 'DEV', 'name' => 'Dev'],
+        'customFields' => [['name' => 'Assignee', 'value' => ['login' => 'x', 'fullName' => $who]]]];
+    Http::fake([
+        'yt.test/api/users/me*' => Http::response(['login' => 'ana', 'fullName' => 'Ana Silva']),
+        'yt.test/api/issues*' => Http::response([$issue('Ana Silva'), $issue('Rui Costa'), $issue('Rui Costa')]),
+    ]);
+
+    $this->getJson('/api/youtrack/analytics')->assertOk()->assertJsonPath('kpis.open', 3);
+    $this->getJson('/api/youtrack/analytics?mine=1')->assertOk()->assertJsonPath('kpis.open', 1)->assertJsonPath('mine', true);
+});

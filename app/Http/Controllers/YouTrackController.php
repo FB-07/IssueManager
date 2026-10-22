@@ -69,14 +69,16 @@ class YouTrackController extends Controller
             'assignee' => ['nullable', 'string', 'max:120'],
             'page' => ['nullable', 'integer', 'min:1', 'max:5000'],
             'per_page' => ['nullable', 'integer', 'in:12,24,48,25,50,100'],
+            'sort' => ['nullable', 'in:'.implode(',', self::SORTS)],
         ]);
-        // sorted by project (then newest first): the page shows one block per project
-        $f['q'] = trim(($f['q'] ?? '').' sort by: project asc, updated desc');
+        // by project (the page shows one block per project) unless another order was asked for; newest first within each
+        $sort = $f['sort'] ?? 'project';
+        $f['q'] = trim(($f['q'] ?? '').' '.$this->sortClause($sort));
 
-        return $this->run(function () use ($f) {
+        return $this->run(function () use ($f, $sort) {
             $result = $this->yt->search($this->yt->buildQuery($f), (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 12));
 
-            return $result + $this->projectInfo($result, '', $f);
+            return $result + ($sort === 'project' ? $this->projectInfo($result, '', $f) : ['project_totals' => [], 'project_ranges' => []]);
         });
     }
 
@@ -93,17 +95,33 @@ class YouTrackController extends Controller
             'state' => ['nullable', 'string', 'max:60'],
             'page' => ['nullable', 'integer', 'min:1', 'max:5000'],
             'per_page' => ['nullable', 'integer', 'in:12,24,48'],
+            'sort' => ['nullable', 'in:'.implode(',', self::SORTS)],
         ]);
         // "mine" (for: me / reporter: me, open or resolved) plus the same filters as the list of existing issues
-        // sorted by project (then newest first) so the page can show one block per project
-        $f['q'] = trim(($f['q'] ?? '').' sort by: project asc, updated desc');
+        // by project (so the page can show one block per project) unless another order was asked for
+        $sort = $f['sort'] ?? 'project';
+        $f['q'] = trim(($f['q'] ?? '').' '.$this->sortClause($sort));
         $query = $this->mineQuery($f['scope'] ?? 'assigned', $f['status'] ?? 'open').' '.$this->yt->buildQuery($f);
 
-        return $this->run(function () use ($f, $query) {
+        return $this->run(function () use ($f, $query, $sort) {
             $result = $this->yt->search($query, (int) ($f['page'] ?? 1), (int) ($f['per_page'] ?? 12));
 
-            return $result + $this->projectInfo($result, $this->mineQuery($f['scope'] ?? 'assigned', $f['status'] ?? 'open'), $f);
+            return $result + ($sort === 'project' ? $this->projectInfo($result, $this->mineQuery($f['scope'] ?? 'assigned', $f['status'] ?? 'open'), $f) : ['project_totals' => [], 'project_ranges' => []]);
         });
+    }
+
+    /** The orders the lists offer; every one falls back to the most recently updated. */
+    private const SORTS = ['project', 'updated', 'created', 'priority', 'state'];
+
+    private function sortClause(string $sort): string
+    {
+        return 'sort by: '.match ($sort) {
+            'updated' => 'updated desc',
+            'created' => 'created desc',
+            'priority' => 'Priority asc, updated desc', // the order of the project's priority list: most urgent first
+            'state' => 'State asc, updated desc',
+            default => 'project asc, updated desc',
+        };
     }
 
     /**
@@ -177,16 +195,23 @@ class YouTrackController extends Controller
     /** The numbers for the analysis page (created / resolved per period, backlog, people, distributions). */
     public function analytics(Request $request)
     {
-        $f = $request->validate(['granularity' => ['nullable', 'in:week,month,year'], 'project' => ['nullable', 'string', 'max:50']]);
+        $f = $request->validate(['granularity' => ['nullable', 'in:week,month,year'], 'project' => ['nullable', 'string', 'max:50'], 'mine' => ['nullable', 'boolean']]);
 
         return $this->run(function () use ($f) {
             $data = $this->yt->analyticsIssues($f['project'] ?? null);
 
-            $out = Analytics::build($data['issues'], $f['granularity'] ?? 'week');
+            $issues = $data['issues'];
+            if ($f['mine'] ?? false) {
+                // only what is assigned to the signed-in user (the rows know people by full name, or by login when there is none)
+                $me = $this->yt->me();
+                $names = array_filter([$me['fullName'] ?? null, $me['login'] ?? null]);
+                $issues = array_values(array_filter($issues, fn ($i) => array_intersect($i['assignees'], $names) !== []));
+            }
+            $out = Analytics::build($issues, $f['granularity'] ?? 'week');
             $avatars = $this->yt->avatarsByName(array_column($out['assignees'], 'name'), $f['project'] ?? null);
             $out['assignees'] = array_map(fn ($p) => $p + ['avatar' => $avatars[mb_strtolower((string) $p['name'])] ?? null], $out['assignees']);
 
-            return $out + ['capped' => $data['capped'], 'generated_at' => now()->toIso8601String()];
+            return $out + ['mine' => (bool) ($f['mine'] ?? false), 'capped' => $data['capped'], 'generated_at' => now()->toIso8601String()];
         });
     }
 
