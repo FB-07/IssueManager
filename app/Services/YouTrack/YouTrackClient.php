@@ -349,6 +349,37 @@ class YouTrackClient
         ], $rows);
     }
 
+    /**
+     * Avatar (URL of the app's image proxy) of each person by full name, from the teams of the projects, so lists that only know
+     * names (the analysis page) can show pictures. Looks project by project and stops when every name has been found.
+     *
+     * @param  list<string>  $names
+     * @return array<string,string> name => avatar url, only for those that have one
+     */
+    public function avatarsByName(array $names, ?string $project = null): array
+    {
+        $want = array_fill_keys(array_map('mb_strtolower', array_filter($names)), true);
+        $keys = $project ? [$project] : array_column($this->projects(), 'key');
+        $found = [];
+        foreach (array_slice($keys, 0, 30) as $key) {
+            if (! $want || count($found) === count($want)) {
+                break;
+            }
+            try {
+                foreach ($this->meta($key)['assignees'] ?? [] as $a) {
+                    $n = mb_strtolower((string) ($a['label'] ?? ''));
+                    if (isset($want[$n]) && ! empty($a['avatar'])) {
+                        $found[$n] ??= $a['avatar'];
+                    }
+                }
+            } catch (TrackerException) {
+                // a project the user cannot read: skip it
+            }
+        }
+
+        return $found;
+    }
+
     /** Rewrites the text of an existing comment of an issue. */
     public function editComment(string $id, string $commentId, string $text): void
     {

@@ -127,7 +127,7 @@
     {{-- profile --}}
     <div class="shrink-0 border-t border-line p-3">
         <button type="button" class="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition hover:bg-surface-2" x-bind:class="s.sidebarCollapsed && 'lg:justify-center lg:px-0'" @click="s.settingsOpen = true; s.sidebarOpen = false" x-bind:title="s.t('nav.settings')">
-            <span class="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent" x-text="s.user.name.slice(0, 1)"></span>
+            <span class="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-xs font-semibold text-accent"><span x-text="s.user.name.slice(0, 1)"></span><template x-if="s.user.avatar"><img x-bind:src="s.user.avatar" alt="" decoding="async" class="absolute inset-0 size-full object-cover" x-on:error="$el.remove()"></template></span>
             <span class="min-w-0 flex-1" x-bind:class="s.sidebarCollapsed && 'lg:hidden'">
                 <span class="block truncate text-sm font-medium" x-text="s.user.name"></span>
                 <span class="block truncate text-xs text-faint" x-text="s.t('nav.settings')"></span>

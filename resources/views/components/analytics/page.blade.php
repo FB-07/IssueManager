@@ -70,13 +70,13 @@
             <h3 class="border-b border-line px-4 py-3 text-sm font-semibold sm:px-5" x-text="s.t('analytics.people')"></h3>
             <div class="max-h-[28rem] overflow-y-auto">
                 <table class="w-full text-sm">
-                    <thead class="sticky top-0 bg-surface text-left text-xs text-muted">
+                    <thead class="sticky top-0 z-10 bg-surface text-left text-xs text-muted">
                         <tr><th class="px-4 py-2 font-medium sm:px-5" x-text="s.t('fields.assignee')"></th><th class="px-2 py-2 font-medium" x-text="s.t('analytics.col_open')"></th><th class="px-4 py-2 text-right font-medium sm:px-5" x-text="s.t('analytics.col_resolved')"></th></tr>
                     </thead>
                     <tbody class="divide-y divide-line">
                         <template x-for="(p, n) in (s.analytics?.assignees ?? [])" x-bind:key="n">
                             <tr>
-                                <td class="px-4 py-2.5 sm:px-5"><span class="flex items-center gap-2.5"><span class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-3 text-[10px] font-semibold text-muted" x-text="(p.name || '?').slice(0, 1).toUpperCase()"></span><span class="min-w-0 truncate" x-bind:class="!p.name && 'text-muted italic'" x-text="p.name || s.t('analytics.unassigned')"></span></span></td>
+                                <td class="px-4 py-2.5 sm:px-5"><span class="flex items-center gap-2.5"><span class="relative flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-3 text-[10px] font-semibold text-muted"><span x-text="(p.name || '?').slice(0, 1).toUpperCase()"></span><template x-if="p.avatar"><img x-bind:src="p.avatar" alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover" x-on:error="$el.remove()"></template></span><span class="min-w-0 truncate" x-bind:class="!p.name && 'text-muted italic'" x-text="p.name || s.t('analytics.unassigned')"></span></span></td>
                                 <td class="px-2 py-2.5"><span class="flex items-center gap-2"><span class="w-7 text-right font-semibold tabular-nums" x-text="p.open"></span><span class="hidden h-2 w-24 rounded-r-[4px] bg-surface-3/40 sm:block"><span class="block h-2 rounded-r-[4px]" x-bind:style="`width:${(p.open / s.barMax(s.analytics.assignees.map((x) => ({ count: x.open })))) * 100}%; background: var(--viz-1)`"></span></span></span></td>
                                 <td class="px-4 py-2.5 text-right tabular-nums sm:px-5" x-text="p.resolved"></td>
                             </tr>

@@ -182,7 +182,11 @@ class YouTrackController extends Controller
         return $this->run(function () use ($f) {
             $data = $this->yt->analyticsIssues($f['project'] ?? null);
 
-            return Analytics::build($data['issues'], $f['granularity'] ?? 'week') + ['capped' => $data['capped'], 'generated_at' => now()->toIso8601String()];
+            $out = Analytics::build($data['issues'], $f['granularity'] ?? 'week');
+            $avatars = $this->yt->avatarsByName(array_column($out['assignees'], 'name'), $f['project'] ?? null);
+            $out['assignees'] = array_map(fn ($p) => $p + ['avatar' => $avatars[mb_strtolower((string) $p['name'])] ?? null], $out['assignees']);
+
+            return $out + ['capped' => $data['capped'], 'generated_at' => now()->toIso8601String()];
         });
     }
 

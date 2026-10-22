@@ -53,7 +53,7 @@
             <p data-no-brand class="mt-1 text-xs leading-relaxed text-muted" x-text="s.t('settings.live_text')"></p>
         </div>
         <div class="flex items-center gap-3 border-t border-line pt-4">
-            <span class="flex size-9 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent" x-text="s.user.name.slice(0, 1)"></span>
+            <span class="relative flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-accent-soft text-sm font-semibold text-accent"><span x-text="s.user.name.slice(0, 1)"></span><template x-if="s.user.avatar"><img x-bind:src="s.user.avatar" alt="" decoding="async" class="absolute inset-0 size-full object-cover" x-on:error="$el.remove()"></template></span>
             <div class="min-w-0"><p class="truncate text-sm font-medium" x-text="s.user.name"></p><p class="truncate text-xs text-faint" x-text="s.user.email"></p></div>
             <form method="POST" action="{{ route('logout') }}" class="ml-auto">
                 @csrf
