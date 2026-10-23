@@ -404,3 +404,42 @@ it('reads the fields of a project from its issues when its settings come back em
         ->and($meta['priorities'])->toBe(['Major', 'Minor']) // no list given: the values in use
         ->and(collect($meta['custom'])->pluck('kind', 'key')->all())->toBe(['Report Title' => 'string']);
 });
+
+it('leaves banned users out of the people who can be assigned', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev', 'archived' => false]]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([
+            ['login' => 'ana', 'fullName' => 'Ana Silva', 'banned' => false],
+            ['login' => 'rui', 'fullName' => 'Rui Costa', 'banned' => true],
+            ['login' => 'eva', 'fullName' => 'Eva Reis'],
+        ]),
+        'yt.test/*' => Http::response([]),
+    ]);
+
+    $people = $this->getJson('/api/youtrack/projects/DEV/meta')->assertOk()->json('assignees');
+
+    expect(array_column($people, 'value'))->toBe(['ana', 'eva']);
+    Http::assertSent(fn ($r) => str_contains($r->url(), 'team/users') && str_contains(urldecode($r->url()), 'banned'));
+});
+
+it('hides banned people in the analysis and in the assignee of the issue rows', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    $issue = fn (string $who) => ['id' => '2-1', 'idReadable' => 'DEV-1', 'summary' => 's', 'created' => now()->subDay()->getTimestamp() * 1000, 'project' => ['shortName' => 'DEV', 'name' => 'Dev'],
+        'customFields' => [['name' => 'Assignee', '$type' => 'MultiUserIssueCustomField', 'value' => array_map(fn ($n) => ['login' => strtolower($n), 'fullName' => $n], explode(',', $who))]]];
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev', 'archived' => false]]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([['login' => 'rui', 'fullName' => 'Rui Costa', 'banned' => true], ['login' => 'ana', 'fullName' => 'Ana Silva', 'banned' => false]]),
+        'yt.test/api/issues*' => Http::response([$issue('Ana Silva,Rui Costa'), $issue('Rui Costa')]),
+        'yt.test/*' => Http::response([]),
+    ]);
+
+    $people = collect($this->getJson('/api/youtrack/analytics')->assertOk()->json('assignees'))->pluck('name')->all();
+    expect($people)->toBe(['Ana Silva']);
+
+    $rows = $this->getJson('/api/youtrack/issues')->assertOk()->json('issues');
+    expect(array_column($rows, 'assignee'))->toBe(['Ana Silva', null]);
+});

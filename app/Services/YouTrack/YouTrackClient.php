@@ -639,15 +639,56 @@ class YouTrackClient
         return $out;
     }
 
+    private ?array $bannedMemo = null;
+
+    /**
+     * Names and logins (lower case) of the banned accounts, from the teams of the projects: they are not shown anywhere (assignee
+     * lists, issue rows, the analysis). Cached for a few minutes; if YouTrack cannot say, nobody is hidden.
+     *
+     * @return list<string>
+     */
+    public function bannedNames(): array
+    {
+        return $this->bannedMemo ??= Cache::remember($this->cacheKey('banned'), 600, function () {
+            $names = [];
+            try {
+                foreach (array_slice($this->projects(), 0, 40) as $p) {
+                    foreach ($this->get("/api/admin/projects/{$p['id']}/team/users", ['fields' => 'login,fullName,banned', '$top' => 200]) as $u) {
+                        if (($u['banned'] ?? false) === true) {
+                            array_push($names, mb_strtolower((string) ($u['fullName'] ?? '')), mb_strtolower((string) ($u['login'] ?? '')));
+                        }
+                    }
+                }
+            } catch (TrackerException) {
+                // what was found so far is used
+            }
+
+            return array_values(array_unique(array_filter($names)));
+        });
+    }
+
+    /** "Ana Silva, Rui Costa" without the banned ones (null when nobody is left). */
+    public function withoutBanned(?string $people): ?string
+    {
+        $banned = $this->bannedNames();
+        if ($people === null || $banned === []) {
+            return $people;
+        }
+        $kept = array_filter(array_map('trim', explode(',', $people)), fn ($n) => $n !== '' && ! in_array(mb_strtolower($n), $banned, true));
+
+        return $kept ? implode(', ', $kept) : null;
+    }
+
     private function assignees(string $projectId): array
     {
         try {
-            $rows = $this->get("/api/admin/projects/$projectId/team/users", ['fields' => 'login,fullName,avatarUrl', '$top' => 200]);
+            $rows = $this->get("/api/admin/projects/$projectId/team/users", ['fields' => 'login,fullName,avatarUrl,banned', '$top' => 200]);
         } catch (TrackerException) {
             return [];
         }
 
-        return collect($rows)->map(fn ($u) => ['value' => $u['login'], 'label' => $u['fullName'] ?? $u['login'], 'avatar' => $this->imageUrl($u['avatarUrl'] ?? null)])->values()->all();
+        // banned accounts cannot work on anything: they are not offered as an assignee (nor suggested, nor shown in the filters)
+        return collect($rows)->reject(fn ($u) => ($u['banned'] ?? false) === true)->map(fn ($u) => ['value' => $u['login'], 'label' => $u['fullName'] ?? $u['login'], 'avatar' => $this->imageUrl($u['avatarUrl'] ?? null)])->values()->all();
     }
 
     /** @return list<array{name:string,id:string,agile:string}> */
@@ -748,7 +789,7 @@ class YouTrackClient
             'comments' => isset($i['commentsCount']) ? (int) $i['commentsCount'] : null,
             'type' => $cf['Type'] ?? null,
             'priority' => $cf['Priority'] ?? null,
-            'assignee' => $cf['Assignee'] ?? null,
+            'assignee' => $this->withoutBanned($cf['Assignee'] ?? null),
             'reporter' => isset($i['reporter']) ? ($i['reporter']['fullName'] ?? $i['reporter']['login'] ?? null) : null, // who created it
             'state' => $cf['State'] ?? null,
             'subsystem' => $cf['Subsystem'] ?? null,

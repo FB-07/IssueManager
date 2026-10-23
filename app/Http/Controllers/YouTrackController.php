@@ -208,6 +208,8 @@ class YouTrackController extends Controller
                 $issues = array_values(array_filter($issues, fn ($i) => array_intersect($i['assignees'], $names) !== []));
             }
             $out = Analytics::build($issues, $f['granularity'] ?? 'week');
+            $banned = $this->yt->bannedNames();
+            $out['assignees'] = array_values(array_filter($out['assignees'], fn ($p) => ! in_array(mb_strtolower((string) $p['name']), $banned, true)));
             $avatars = $this->yt->avatarsByName(array_column($out['assignees'], 'name'), $f['project'] ?? null);
             $out['assignees'] = array_map(fn ($p) => $p + ['avatar' => $avatars[mb_strtolower((string) $p['name'])] ?? null], $out['assignees']);
 
