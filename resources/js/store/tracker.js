@@ -56,13 +56,24 @@ export function trackerSlice() {
         async loadMeta(project) {
             if (!project || this.metaByProject[project]) return;
             try {
-                this.metaByProject = { ...this.metaByProject, [project]: await api('GET', `/api/youtrack/projects/${encodeURIComponent(project)}/meta`) };
+                // the answer is merged into what is there when it arrives: another project's data that came in meanwhile must not be lost
+                const meta = await api('GET', `/api/youtrack/projects/${encodeURIComponent(project)}/meta`);
+                this.metaByProject = { ...this.metaByProject, [project]: meta };
             } catch (e) {
                 this.notify(e.message, 'error');
             }
         },
+        /**
+         * The lists of the draft's project: its own fields and nothing of another project's. While the project's data is still
+         * loading (or no project is chosen yet) the lists are empty, only the first project's types/priorities stand in before a choice.
+         */
         get meta() {
-            return this.metaByProject[this.draft?.project] ?? this.metaByProject[this.projects?.[0]?.key] ?? { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
+            const empty = { types: [], priorities: [], subsystems: [], sprints: [], assignees: [], custom: [] };
+            const own = this.metaByProject[this.draft?.project];
+            if (own) return own;
+            if (this.draft?.project) return empty;
+
+            return { ...(this.metaByProject[this.projects?.[0]?.key] ?? empty), custom: [] };
         },
         issueUrl(key) {
             return `${String(this.trackerUrl ?? '').replace(/\/$/, '')}/issue/${key}`;

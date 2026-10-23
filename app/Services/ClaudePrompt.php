@@ -26,7 +26,7 @@ TXT;
   - type: pick the closest value of the chosen project's `types` list: something broken -> the defect type ("Bug" or, if that is what the catalog has, "Anomaly"); new capability -> "Feature"; improvement or visual tweak -> "Improvement" if available, else "Task"; chore/maintenance -> "Task".
   - priority: judge urgency and impact from the wording (production down, data loss, security, blocking many users -> highest; broken but with a workaround -> high/normal; cosmetic or nice-to-have -> low).
   - project and subsystem: choose the best match from the catalog using names, areas or technologies mentioned (e.g. website/checkout -> web project, app/mobile -> mobile project, API/backend -> API project). If the user states any field explicitly, use exactly that.
-  - custom fields (`custom_fields`, listed under `custom` in the project's catalog): ALWAYS fill `Environment` and `Estimation` when the project has them (Environment: production/live -> Production, staging/test server -> Staging, local/dev machine -> Local, else the most plausible; Estimation: estimate effort from scope and complexity, tiny tweak -> smallest value, large feature -> largest). For every other custom field fill it only when the user's message clearly supports a value (e.g. a module, platform or area they mention). NEVER fill approval, state, workflow, version or sign-off style fields (e.g. "Approved"); leave those out. Always use exactly one of the field's allowed values.
+  - custom fields (`custom_fields`, listed under `custom` in the project's catalog): ALWAYS fill `Environment` and `Estimation` when the project has them (Environment: production/live -> Production, staging/test server -> Staging, local/dev machine -> Local, else the most plausible; Estimation: estimate effort from scope and complexity, tiny tweak -> smallest value, large feature -> largest). For every other custom field fill it only when the user's message clearly supports a value (e.g. a module, platform or area they mention). NEVER fill approval, state, workflow, version or sign-off style fields (e.g. "Approved"); leave those out. Fields of kind `enum` take exactly one of their allowed `values`; the others (kind `number`, `string`, `text`, `date` as YYYY-MM-DD, `period` such as "2h 30m") are free: fill them only when the user gave that value, never invent one.
   - assignee and sprint: set only if the user mentions a person or sprint (never guess a person); otherwise omit them.
   Briefly tell the user in the `message` which type, priority, project and subsystem you chose and why, so they can change them. If nothing in the message allows a reasonable choice for a field, omit it.
 TXT;
@@ -222,7 +222,7 @@ PROMPT;
                     'labels' => ['type' => 'array', 'items' => $str, 'description' => 'Complete list of labels.'],
                     'custom_fields' => [
                         'type' => 'object',
-                        'description' => 'Custom fields from the catalog `custom` list, as {FieldKey: allowed value}. Always fill all of them (e.g. Environment, Estimation).',
+                        'description' => 'Custom fields from the catalog `custom` list, as {FieldKey: value}: for kind `enum` fields one of the allowed values (always fill Environment and Estimation); for the free kinds (number, string, text, date YYYY-MM-DD, period) only a value the user gave.',
                         'additionalProperties' => $str,
                     ],
                     'sprint' => $str + ['description' => 'Only if the user mentioned a sprint.'],

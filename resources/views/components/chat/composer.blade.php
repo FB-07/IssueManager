@@ -1,5 +1,5 @@
 <div x-show="s.page === 'chat'" class="shrink-0 px-3 pb-3 pt-1 sm:px-6 sm:pb-4" style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom))">
-    <form class="relative mx-auto w-full max-w-3xl" @submit.prevent="s.send()">
+    <form class="relative mx-auto w-full max-w-3xl lg:max-w-4xl xl:max-w-6xl 2xl:max-w-[88rem]" @submit.prevent="s.send()">
         {{-- an issue key typed in the box: offer to attach that issue to the message (never done on its own) --}}
         <div x-show="s.mentionedKey" x-cloak class="anim-rise mb-2 flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-xs">
             <x-ui.icon name="check-circle" class="size-3.5 shrink-0 text-muted" />

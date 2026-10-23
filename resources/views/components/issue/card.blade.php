@@ -94,12 +94,17 @@
         </div>
 
         {{-- properties --}}
-        <section class="rounded-2xl border border-line bg-surface-2/40 p-4" aria-labelledby="card-props">
+        <section class="rounded-2xl border border-line bg-surface-2/40 p-4" aria-labelledby="card-props" @unless($batch) x-effect="s.draft?.project && s.loadMeta(s.draft.project)" @endunless>
             <h4 id="card-props" class="mb-3 text-[11px] font-semibold uppercase tracking-wider text-faint" x-text="s.t('card.section_properties')"></h4>
-            <div class="grid gap-4 sm:grid-flow-col sm:grid-cols-2 sm:grid-rows-[auto_auto]">
+            <div class="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 <x-issue.field :c="$c" field="project" required>
                     <x-ui.select id="field-project" value="{{ $c }}.draft.project" select="{{ $c }}.setField('project', $value || null)"
                         options="(s.projects ?? []).map((p) => s.projectOption(p))" invalid="{{ $c }}.missing.includes('project')" on-open="s.loadProjects()" />
+                </x-issue.field>
+
+                <x-issue.field :c="$c" field="subsystem" x-show="{{ $c }}.meta.subsystems.length">
+                    <x-ui.select id="field-subsystem" value="{{ $c }}.draft.subsystem" select="{{ $c }}.setField('subsystem', $value || null)"
+                        options="{{ $c }}.meta.subsystems.map((o) => ({ value: o, label: s.lbl('subsystem', o) }))" empty-label="s.t('card.none')" />
                 </x-issue.field>
 
                 <x-issue.field :c="$c" field="assignee">
@@ -137,16 +142,12 @@
                 <span x-text="s.t('card.advanced')"></span>
                 <span class="ml-auto text-xs font-normal text-faint" x-text="s.t('card.optional')"></span>
             </button>
-            <div x-show="s.advancedOpen" x-collapse.duration.200ms x-cloak class="grid gap-4 border-t border-line p-4 sm:grid-cols-2">
-                <p class="text-xs text-muted sm:col-span-2" x-show="!{{ $c }}.draft.project" x-text="s.t('card.need_project')"></p>
+            <div x-show="s.advancedOpen" x-collapse.duration.200ms x-cloak class="grid items-start gap-4 border-t border-line p-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <p class="text-xs text-muted sm:col-span-full" x-show="!{{ $c }}.draft.project" x-text="s.t('card.need_project')"></p>
 
                 <x-issue.field :c="$c" field="sprint" x-show="{{ $c }}.meta.sprints.length">
                     <x-ui.select id="field-sprint" value="{{ $c }}.draft.sprint" select="{{ $c }}.setField('sprint', $value || null)"
                         options="{{ $c }}.meta.sprints.map((o) => ({ value: o, label: s.lbl('sprint', o) }))" empty-label="s.t('card.none')" />
-                </x-issue.field>
-                <x-issue.field :c="$c" field="subsystem" x-show="{{ $c }}.meta.subsystems.length">
-                    <x-ui.select id="field-subsystem" value="{{ $c }}.draft.subsystem" select="{{ $c }}.setField('subsystem', $value || null)"
-                        options="{{ $c }}.meta.subsystems.map((o) => ({ value: o, label: s.lbl('subsystem', o) }))" empty-label="s.t('card.none')" />
                 </x-issue.field>
 
                 <div>
@@ -165,8 +166,7 @@
                 <template x-for="cf in {{ $c }}.meta.custom" x-bind:key="cf.key">
                     <div>
                         <label class="label" x-text="s.lbl('custom', cf.key)"></label>
-                        <x-ui.select value="{{ $c }}.draft.custom_fields[cf.key] ?? ''" select="{{ $c }}.setCustom(cf.key, $value || null)"
-                            options="cf.values.map((v) => ({ value: v, label: s.lbl('customValue', v) }))" empty-label="s.t('card.none')" label="s.lbl('custom', cf.key)" />
+                        <x-issue.custom-input value="{{ $c }}.draft.custom_fields[cf.key] ?? ''" set="{{ $c }}.setCustom(cf.key, $value || null)" />
                     </div>
                 </template>
             </div>

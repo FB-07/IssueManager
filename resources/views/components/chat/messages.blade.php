@@ -1,4 +1,4 @@
-<section x-show="s.page === 'chat' && (s.activeId || s.messages.length > 0 || s.processing)" x-cloak class="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6">
+<section x-show="s.page === 'chat' && (s.activeId || s.messages.length > 0 || s.processing)" x-cloak class="mx-auto w-full max-w-3xl lg:max-w-4xl xl:max-w-6xl 2xl:max-w-[88rem] space-y-6 px-4 py-6 sm:px-6">
     {{-- a conversation opening: its messages, as placeholders --}}
     <div x-show="s.loadingConversation" x-cloak class="space-y-6" role="status" aria-busy="true">
         <span class="sr-only" x-text="s.t('common.loading')"></span>

@@ -346,3 +346,61 @@ it('creates an issue that has an assignee in the Submitted state', function () {
     $yt->create($draft);
     expect($states())->toBeNull();
 });
+
+it('offers and sends the other custom fields of a project: lists, versions, numbers, texts, dates and periods', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    $def = fn (string $name, string $type, string $ft = 'x', array $values = []) => ['field' => ['name' => $name, 'fieldType' => ['id' => $ft, 'isMultiValue' => false]], '$type' => $type, 'bundle' => ['values' => array_map(fn ($v) => ['name' => $v], $values)]];
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev', 'archived' => false]]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            $def('Type', 'EnumProjectCustomField', 'enum', ['Bug']), $def('Priority', 'EnumProjectCustomField', 'enum', ['Major']),
+            $def('Platform', 'OwnedProjectCustomField', 'ownedField', ['Quiosque', 'App']),
+            $def('Found in version', 'VersionProjectCustomField', 'version', ['1.0', 'Unknown']),
+            $def('Proximo ID', 'SimpleProjectCustomField', 'integer'),
+            $def('Migration file', 'SimpleProjectCustomField', 'string'),
+            $def('Due Date', 'SimpleProjectCustomField', 'date'),
+            $def('Predicted time', 'PeriodProjectCustomField', 'period'),
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([]),
+        'yt.test/api/agiles*' => Http::response([]),
+        'yt.test/api/issues*' => Http::response(['id' => '2-1', 'idReadable' => 'DEV-1']),
+        'yt.test/*' => Http::response([]),
+    ]);
+
+    $custom = collect($this->getJson('/api/youtrack/projects/DEV/meta')->assertOk()->json('custom'))->keyBy('key');
+    expect($custom->map->kind->all())->toBe(['Platform' => 'enum', 'Found in version' => 'enum', 'Proximo ID' => 'number', 'Migration file' => 'string', 'Due Date' => 'date', 'Predicted time' => 'period'])
+        ->and($custom['Platform']['values'])->toBe(['Quiosque', 'App']);
+
+    app(\App\Services\YouTrack\YouTrackClient::class)->create(['summary' => 'x', 'description' => 'd', 'project' => 'DEV', 'type' => 'Bug', 'priority' => 'Major', 'custom_fields' => [
+        'Platform' => 'Quiosque', 'Found in version' => '1.0', 'Proximo ID' => '1265', 'Migration file' => 'a.sql', 'Due Date' => '2026-11-01', 'Predicted time' => '2h 30m']]);
+    $sent = collect(Http::recorded(fn ($r) => $r->method() === 'POST' && str_ends_with(parse_url($r->url(), PHP_URL_PATH), '/api/issues'))->last()[0]['customFields'])->keyBy('name');
+
+    expect($sent['Platform']['$type'])->toBe('SingleOwnedIssueCustomField')
+        ->and($sent['Found in version'])->toMatchArray(['$type' => 'SingleVersionIssueCustomField', 'value' => ['name' => '1.0']])
+        ->and($sent['Proximo ID'])->toMatchArray(['$type' => 'SimpleIssueCustomField', 'value' => 1265])
+        ->and($sent['Migration file']['value'])->toBe('a.sql')
+        ->and($sent['Due Date'])->toMatchArray(['$type' => 'DateIssueCustomField', 'value' => strtotime('2026-11-01 12:00:00 UTC') * 1000])
+        ->and($sent['Predicted time'])->toMatchArray(['$type' => 'PeriodIssueCustomField', 'value' => ['presentation' => '2h 30m']]);
+});
+
+it('reads the fields of a project from its issues when its settings come back empty', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    $cf = fn (string $name, string $type, string $ft, $value, array $bundle = []) => ['name' => $name, 'value' => $value, 'projectCustomField' => ['$type' => $type, 'field' => ['name' => $name, 'fieldType' => ['id' => $ft]], 'bundle' => ['values' => $bundle]]];
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-75', 'shortName' => 'EDG', 'name' => 'Edigma', 'archived' => false]]),
+        'yt.test/api/admin/projects/0-75/customFields*' => Http::response([]),
+        'yt.test/api/issues*' => Http::response([
+            ['customFields' => [$cf('Type', 'EnumProjectCustomField', 'enum[1]', ['name' => 'Bug'], [['name' => 'Bug'], ['name' => 'Task']]), $cf('Priority', 'EnumProjectCustomField', 'enum[1]', ['name' => 'Major']), $cf('Report Title', 'SimpleProjectCustomField', 'string', 'x')]],
+            ['customFields' => [$cf('Priority', 'EnumProjectCustomField', 'enum[1]', ['name' => 'Minor'])]],
+        ]),
+        'yt.test/*' => Http::response([]),
+    ]);
+
+    $meta = $this->getJson('/api/youtrack/projects/EDG/meta')->assertOk()->json();
+
+    expect($meta['types'])->toBe(['Bug', 'Task'])            // the list YouTrack gave for the field
+        ->and($meta['priorities'])->toBe(['Major', 'Minor']) // no list given: the values in use
+        ->and(collect($meta['custom'])->pluck('kind', 'key')->all())->toBe(['Report Title' => 'string']);
+});

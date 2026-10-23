@@ -11,7 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
-/** Login through the YouTrack Hub. Only accounts of the company email domain (config issuemanager.allowed_domain) get in. */
+/** Login through the YouTrack Hub. Only accounts of the company email domain (config issuemanager.allowed_domains) get in. */
 class AuthController extends Controller
 {
     /** The only account the local dev login signs in (and the only one allowed to use the shared YouTrack token). */
@@ -65,7 +65,7 @@ class AuthController extends Controller
 
         $email = mb_strtolower(trim((string) ($profile['email'] ?? '')));
         if (! $this->allowedEmail($email)) {
-            return redirect()->route('login')->with('error', __('ui.login.domain_only', ['domain' => config('issuemanager.allowed_domain'), 'email' => $email !== '' ? $email : $profile['name']]));
+            return redirect()->route('login')->with('error', __('ui.login.domain_only', ['domain' => implode(', @', config('issuemanager.allowed_domains')), 'email' => $email !== '' ? $email : $profile['name']]));
         }
 
         // no invitations: the first login of an account of the domain creates its user
@@ -127,10 +127,9 @@ class AuthController extends Controller
     /** The email must be exactly `name@<allowed domain>`: "x@proside.pt.evil.com" or "x@evilproside.pt" do not pass. */
     private function allowedEmail(string $email): bool
     {
-        $domain = (string) config('issuemanager.allowed_domain');
         $at = strrpos($email, '@');
 
-        return $domain !== '' && $at !== false && $at > 0 && substr($email, $at + 1) === $domain && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
+        return $at !== false && $at > 0 && in_array(substr($email, $at + 1), config('issuemanager.allowed_domains'), true) && filter_var($email, FILTER_VALIDATE_EMAIL) !== false;
     }
 
     private function devLoginAllowed(): bool

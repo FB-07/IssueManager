@@ -203,7 +203,7 @@
                 <div class="grid gap-4 sm:grid-cols-2" x-show="(s.issueMeta?.custom ?? []).length">
                     <template x-for="cf in (s.issueMeta?.custom ?? [])" x-bind:key="cf.key">
                         <div><label class="label" x-text="s.lbl('custom', cf.key)"></label>
-                            <x-ui.select value="s.issueEdit.custom[cf.key] ?? ''" select="s.issueEdit.custom[cf.key] = $value" options="cf.values.map((o) => ({ value: o, label: s.lbl('customValue', o) }))" label="s.lbl('custom', cf.key)" /></div>
+                            <x-issue.custom-input value="s.issueEdit.custom[cf.key] ?? ''" set="s.issueEdit.custom[cf.key] = $value" :empty="false" /></div>
                     </template>
                 </div>
                 <div x-show="(s.issueMeta?.subsystems ?? []).length">

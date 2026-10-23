@@ -51,8 +51,9 @@ class DraftPatch
                 $cf = [];
                 foreach ($meta['custom'] as $def) {
                     $v = $raw['custom_fields'][$def['key']] ?? null;
-                    if (is_string($v) && in_array($v, $def['values'], true)) {
-                        $cf[$def['key']] = $v;
+                    $v = is_int($v) || is_float($v) ? (string) $v : $v;
+                    if (is_string($v) && self::validCustom($def, $v)) {
+                        $cf[$def['key']] = mb_substr(trim($v), 0, 255);
                     }
                 }
                 if ($cf) {
@@ -67,5 +68,18 @@ class DraftPatch
         }
 
         return $patch ?: null;
+    }
+
+    /** Whether `$v` is acceptable for a custom field of the project: one of its values, or a well formed number / date / text. */
+    public static function validCustom(array $def, string $v): bool
+    {
+        $v = trim($v);
+
+        return match ($def['kind'] ?? 'enum') {
+            'enum' => in_array($v, $def['values'] ?? [], true),
+            'number' => is_numeric($v),
+            'date' => preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) === 1 && strtotime($v) !== false,
+            default => $v !== '', // string, text, period: free text (the tracker rejects what it does not understand)
+        };
     }
 }

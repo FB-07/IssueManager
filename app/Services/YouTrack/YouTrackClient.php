@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\Log;
  * Normalised shapes:
  *  project = ['key','name','id']
  *  meta    = ['types','priorities','subsystems','sprints' => string[], 'assignees' => [['value'=>login,'label'=>name]],
- *             'custom' => [['key','label','values'=>string[]]]]
+ *             'custom' => [['key','label','kind'=>enum|number|string|text|date|period,'values'=>string[] (enum only)]]]
  */
 class YouTrackClient
 {
@@ -97,9 +97,14 @@ class YouTrackClient
         return Cache::remember($this->cacheKey("meta.$projectKey"), 120, function () use ($projectKey) {
             $id = $this->projectId($projectKey);
             $fields = $this->get("/api/admin/projects/$id/customFields", [
-                'fields' => 'field(name),bundle(values(name,isResolved)),$type',
+                'fields' => 'field(name,fieldType(id)),bundle(values(name,isResolved)),$type',
                 '$top' => 100,
             ]);
+
+            // a project whose settings the user may not read comes back empty: its fields are then read from its own issues
+            if ($fields === []) {
+                $fields = $this->fieldsFromIssues($projectKey);
+            }
 
             $meta = ['types' => [], 'priorities' => [], 'subsystems' => [], 'states' => [], 'resolved_states' => [], 'sprints' => [], 'assignees' => [], 'custom' => []];
             $map = ['Type' => 'types', 'Priority' => 'priorities', 'Subsystem' => 'subsystems'];
@@ -113,8 +118,8 @@ class YouTrackClient
                     $meta['resolved_states'] = collect($f['bundle']['values'] ?? [])->filter(fn ($v) => ($v['isResolved'] ?? false) === true)->pluck('name')->filter()->values()->all();
                 } elseif (isset($map[$name])) {
                     $meta[$map[$name]] = $values;
-                } elseif ($name && ! in_array($name, self::KNOWN, true) && $values && str_starts_with($f['$type'] ?? '', 'Enum')) {
-                    $meta['custom'][] = ['key' => $name, 'label' => $name, 'values' => $values];
+                } elseif ($name && ! in_array($name, self::KNOWN, true) && ($kind = $this->customKind($f['$type'] ?? '', $f['field']['fieldType']['id'] ?? '', $values !== []))) {
+                    $meta['custom'][] = ['key' => $name, 'label' => $name, 'kind' => $kind, 'values' => $kind === 'enum' ? $values : []];
                 }
             }
             $meta['assignees'] = $this->assignees($id);
@@ -437,7 +442,9 @@ class YouTrackClient
             $r = Http::withToken($this->token())->acceptJson()->timeout(60)->baseUrl(config('services.youtrack.url'))
                 ->attach('file', $contents, $name, ['Content-Type' => $mime ?: 'application/octet-stream'])
                 ->post("/api/issues/$key/attachments?fields=id,name");
-        } catch (ConnectionException) {
+        } catch (ConnectionException $e) {
+            Log::warning('YouTrack unreachable', ['message' => mb_substr($e->getMessage(), 0, 300)]);
+
             throw new TrackerException(__('ui.errors.tracker_unreachable'));
         }
 
@@ -503,28 +510,117 @@ class YouTrackClient
     }
 
     /** @param array<string,?string> $values */
+    /**
+     * The fields of a project as its recent issues show them, in the shape of the project's field settings (for the projects whose
+     * settings the user cannot read). The allowed values are those of the field's list when YouTrack gives them, else the ones in use.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function fieldsFromIssues(string $projectKey): array
+    {
+        try {
+            $rows = $this->get('/api/issues', [
+                'query' => 'project: {'.str_replace(['{', '}'], '', $projectKey).'} sort by: updated desc',
+                'fields' => 'customFields(name,value(name),projectCustomField($type,field(name,fieldType(id)),bundle(values(name,isResolved))))',
+                '$top' => 100,
+            ]);
+        } catch (TrackerException) {
+            return [];
+        }
+
+        $found = [];
+        foreach ($rows as $issue) {
+            foreach ($issue['customFields'] ?? [] as $cf) {
+                $name = $cf['name'] ?? null;
+                if (! $name) {
+                    continue;
+                }
+                $pcf = $cf['projectCustomField'] ?? [];
+                $found[$name] ??= [
+                    'field' => ['name' => $name, 'fieldType' => ['id' => $pcf['field']['fieldType']['id'] ?? '']],
+                    '$type' => $pcf['$type'] ?? '',
+                    'bundle' => ['values' => $pcf['bundle']['values'] ?? []],
+                    'used' => [],
+                ];
+                $v = $cf['value'] ?? null;
+                foreach (is_array($v) && array_is_list($v) ? $v : [$v] as $one) {
+                    if (is_array($one) && filled($one['name'] ?? null)) {
+                        $found[$name]['used'][$one['name']] = ['name' => $one['name']];
+                    }
+                }
+            }
+        }
+
+        return array_values(array_map(function ($f) {
+            if ($f['bundle']['values'] === []) {
+                $f['bundle']['values'] = array_values($f['used']); // no list from YouTrack: the values seen in the issues
+            }
+            unset($f['used']);
+
+            return $f;
+        }, $found));
+    }
+
+    /**
+     * What the app can fill in for a project field besides the ones it knows: a choice from a list (enum, owned, version and build
+     * bundles), a number, a short text, a long text, a date or a period (e.g. "2h 30m"). null for the rest (users, groups, dates with time…).
+     */
+    private function customKind(string $type, string $fieldType, bool $hasValues): ?string
+    {
+        return match (true) {
+            $hasValues && preg_match('/^(Enum|Owned|Version|Build)/', $type) === 1 => 'enum',
+            str_starts_with($type, 'Text') || $fieldType === 'text' => 'text',
+            str_starts_with($type, 'Period') || $fieldType === 'period' => 'period',
+            in_array($fieldType, ['integer', 'float'], true) => 'number',
+            $fieldType === 'string' => 'string',
+            $fieldType === 'date' => 'date',
+            default => null,
+        };
+    }
+
     private function customFieldsPayload(string $projectKey, array $values): array
     {
         $id = $this->projectId($projectKey);
-        $defs = collect($this->get("/api/admin/projects/$id/customFields", ['fields' => 'field(name,fieldType(isMultiValue)),$type', '$top' => 100]))
-            ->mapWithKeys(fn ($f) => [$f['field']['name'] => ['type' => $f['$type'] ?? '', 'multi' => (bool) ($f['field']['fieldType']['isMultiValue'] ?? false)]]);
+        $defs = collect($this->get("/api/admin/projects/$id/customFields", ['fields' => 'field(name,fieldType(id,isMultiValue)),$type', '$top' => 100]))
+            ->mapWithKeys(fn ($f) => [$f['field']['name'] => ['type' => $f['$type'] ?? '', 'multi' => (bool) ($f['field']['fieldType']['isMultiValue'] ?? false), 'ft' => $f['field']['fieldType']['id'] ?? '']]);
 
         $out = [];
         foreach ($values as $name => $value) {
             if (blank($value) || ! $defs->has($name)) {
                 continue;
             }
-            ['type' => $t, 'multi' => $multi] = $defs[$name];
+            ['type' => $t, 'multi' => $multi, 'ft' => $ft] = $defs[$name];
             $kind = match (true) {
                 str_starts_with($t, 'User') => 'User',
                 str_starts_with($t, 'Owned') => 'Owned',
                 str_starts_with($t, 'Enum') => 'Enum',
+                str_starts_with($t, 'Version') => 'Version',
+                str_starts_with($t, 'Build') => 'Build',
                 str_starts_with($t, 'State') => 'State',
-                str_starts_with($t, 'Text') => 'Text',
+                str_starts_with($t, 'Text') || $ft === 'text' => 'Text',
+                str_starts_with($t, 'Period') || $ft === 'period' => 'Period',
+                in_array($ft, ['integer', 'float'], true) => 'Number',
+                $ft === 'string' => 'String',
+                $ft === 'date' => 'Date',
                 default => null,
             };
             if ($kind === null) {
                 continue; // period/date/simple fields are not handled by the draft
+            }
+
+            // numbers, short texts, dates and periods are plain values, not a pick from a list
+            if (in_array($kind, ['Number', 'String', 'Date', 'Period'], true)) {
+                $plain = match ($kind) {
+                    'Number' => is_numeric($value) ? ($ft === 'integer' ? (int) $value : (float) $value) : null,
+                    'String' => (string) $value,
+                    'Date' => ($ts = strtotime($value.' 12:00:00 UTC')) ? $ts * 1000 : null,
+                    'Period' => ['presentation' => (string) $value],
+                };
+                if ($plain !== null) {
+                    $out[] = ['name' => $name, '$type' => match ($kind) { 'Date' => 'DateIssueCustomField', 'Period' => 'PeriodIssueCustomField', default => 'SimpleIssueCustomField' }, 'value' => $plain];
+                }
+
+                continue;
             }
 
             // multi-valued fields (e.g. an Assignee that accepts several users) need Multi* types and a list
@@ -533,7 +629,7 @@ class YouTrackClient
                 'Text' => ['text' => $value],
                 default => ['name' => $value],
             };
-            $out[] = $multi && in_array($kind, ['User', 'Owned', 'Enum'], true)
+            $out[] = $multi && in_array($kind, ['User', 'Owned', 'Enum', 'Version', 'Build'], true)
                 ? ['name' => $name, '$type' => "Multi{$kind}IssueCustomField", 'value' => [$single]]
                 : ['name' => $name, '$type' => match ($kind) {
                     'State' => 'StateIssueCustomField', 'Text' => 'TextIssueCustomField', default => "Single{$kind}IssueCustomField",

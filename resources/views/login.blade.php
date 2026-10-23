@@ -31,7 +31,7 @@
 
         <a id="main-login" href="{{ route('auth.youtrack') }}" class="btn btn-primary w-full py-2.5">{{ __('ui.login.button') }}</a>
         <a id="other-login" hidden href="{{ route('auth.youtrack', ['other' => 1]) }}" class="btn w-full py-2.5">{{ __('ui.login.other_account') }}</a>
-        <p class="mt-3 text-center text-xs text-faint">{{ __('ui.login.domain_note', ['domain' => config('issuemanager.allowed_domain')]) }}</p>
+        <p class="mt-3 text-center text-xs text-faint">{{ __('ui.login.domain_note', ['domain' => implode(', @', config('issuemanager.allowed_domains'))]) }}</p>
     @else
         <p class="rounded-xl border border-line bg-surface px-3.5 py-3 text-sm text-muted">{{ __('ui.login.not_configured') }}</p>
     @endif

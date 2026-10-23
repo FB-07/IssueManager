@@ -6,6 +6,7 @@ use App\Exceptions\TrackerException;
 use App\Http\Controllers\Concerns\ScopesToUser;
 use App\Models\IssueDraft;
 use App\Services\AttachmentUploader;
+use App\Services\DraftPatch;
 use App\Services\SimilarIssues;
 use App\Services\YouTrack\YouTrackClient;
 use App\Support\Presenter;
@@ -61,10 +62,10 @@ class DraftController extends Controller
                 $data['assignee'] = null;
             }
             if (array_key_exists('project', $data) && $data['project'] !== $draft->project) {
-                $valid = array_column($meta['custom'], 'values', 'key');
+                $defs = array_column($meta['custom'], null, 'key');
                 $data['custom_fields'] = array_filter(
                     $data['custom_fields'] ?? $draft->custom_fields ?? [],
-                    fn ($v, $k) => isset($valid[$k]) && in_array($v, $valid[$k], true),
+                    fn ($v, $k) => isset($defs[$k]) && DraftPatch::validCustom($defs[$k], (string) $v),
                     ARRAY_FILTER_USE_BOTH,
                 );
             }

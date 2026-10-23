@@ -82,13 +82,23 @@ it('denies accounts outside the allowed domain, including look-alike domains and
 });
 
 it('honours a different allowed domain from the configuration', function () {
-    config(['issuemanager.allowed_domain' => 'outra.pt']);
+    config(['issuemanager.allowed_domains' => ['outra.pt']]);
 
     hub_login('hub-1', 'ana@proside.pt')->assertRedirect('/login');
     $this->assertGuest();
 
     Http::swap(new \Illuminate\Http\Client\Factory); // the first stubs would win otherwise
     hub_login('hub-2', 'ana@outra.pt')->assertRedirect(route('home'));
+});
+
+it('accepts every domain of the list and none of their look-alikes', function () {
+    config(['issuemanager.allowed_domains' => ['proside.pt', 'empirepuzzle.com']]);
+
+    hub_login('hub-1', 'ana@empirepuzzle.com')->assertRedirect(route('home'));
+    auth()->logout();
+    Http::swap(new \Illuminate\Http\Client\Factory);
+    hub_login('hub-2', 'rui@empirepuzzle.com.evil.com')->assertRedirect('/login')->assertSessionHas('error');
+    expect(session('error'))->toContain('proside.pt, @empirepuzzle.com');
 });
 
 it('rejects a wrong state and a failed token exchange', function () {
