@@ -312,6 +312,11 @@ class YouTrackClient
             'Subsystem' => $draft['subsystem'] ?? null,
         ] + ($draft['custom_fields'] ?? []);
 
+        // an issue that is created already assigned starts as Submitted (only where the project has that state)
+        if (filled($draft['assignee'] ?? null) && blank($values['State'] ?? null) && in_array('Submitted', $this->meta($draft['project'])['states'] ?? [], true)) {
+            $values['State'] = 'Submitted';
+        }
+
         $created = $this->send('post', '/api/issues', ['fields' => 'id,idReadable'], [
             'project' => ['id' => $this->projectId($draft['project'])],
             'summary' => $this->withPrefix($draft['summary']),

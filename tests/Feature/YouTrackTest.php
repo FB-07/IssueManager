@@ -316,3 +316,33 @@ it('analyses only the issues assigned to the user when asked', function () {
     $this->getJson('/api/youtrack/analytics')->assertOk()->assertJsonPath('kpis.open', 3);
     $this->getJson('/api/youtrack/analytics?mine=1')->assertOk()->assertJsonPath('kpis.open', 1)->assertJsonPath('mine', true);
 });
+
+it('creates an issue that has an assignee in the Submitted state', function () {
+    config(['services.youtrack.url' => 'https://yt.test', 'services.youtrack.token' => 'tok']);
+    $this->actingAs(yt_user());
+    $field = fn (string $name, string $type, array $values = []) => ['field' => ['name' => $name, 'fieldType' => ['isMultiValue' => false]], '$type' => $type, 'bundle' => ['values' => $values]];
+    Http::fake([
+        'yt.test/api/admin/projects?*' => Http::response([['id' => '0-1', 'shortName' => 'DEV', 'name' => 'Dev', 'archived' => false]]),
+        'yt.test/api/admin/projects/0-1/customFields*' => Http::response([
+            $field('Type', 'EnumProjectCustomField', [['name' => 'Bug']]),
+            $field('Priority', 'EnumProjectCustomField', [['name' => 'Major']]),
+            $field('State', 'StateProjectCustomField', [['name' => 'Submitted', 'isResolved' => false], ['name' => 'Open', 'isResolved' => false]]),
+            $field('Assignee', 'UserProjectCustomField'),
+        ]),
+        'yt.test/api/admin/projects/0-1/team/users*' => Http::response([['login' => 'ana', 'fullName' => 'Ana']]),
+        'yt.test/api/issues*' => Http::response(['id' => '2-1', 'idReadable' => 'DEV-1']),
+        'yt.test/*' => Http::response([]),
+    ]);
+    $yt = app(\App\Services\YouTrack\YouTrackClient::class);
+    $draft = ['summary' => 'x', 'description' => 'd', 'project' => 'DEV', 'type' => 'Bug', 'priority' => 'Major'];
+    $states = fn () => collect(Http::recorded(fn ($r) => $r->method() === 'POST' && str_ends_with(parse_url($r->url(), PHP_URL_PATH), '/api/issues'))->last()[0]['customFields'])->firstWhere('name', 'State');
+
+    $yt->create($draft + ['assignee' => 'ana']);
+    expect($states()['value'])->toBe(['name' => 'Submitted']);
+
+    $yt->create($draft + ['assignee' => 'ana', 'custom_fields' => ['State' => 'Open']]);
+    expect($states()['value'])->toBe(['name' => 'Open']);
+
+    $yt->create($draft);
+    expect($states())->toBeNull();
+});
